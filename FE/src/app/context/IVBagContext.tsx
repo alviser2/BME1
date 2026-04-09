@@ -26,6 +26,8 @@ interface IVBagContextType {
   addEsp32: (esp32Id: string) => string;
   assignPatientToEsp32: (esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => string;
   releaseEsp32: (esp32Id: string) => void;
+  moveToMaintenance: (esp32Id: string) => void;
+  resolveMaintenance: (esp32Id: string) => void;
   removeEsp32: (esp32Id: string) => void;
 }
 
@@ -61,6 +63,7 @@ const mockBags: IVBag[] = [
     flowRate: 40,
     startTime: startTimeP1,
     status: "running",
+    anomaly: "FAST_DRAIN_WARNING", // TEST: đổi thành "FAST_DRAIN_WARNING" để test warning
     historyLogs: generateMockHistory(500, 40, startTimeP1),
   },
   {
@@ -73,6 +76,7 @@ const mockBags: IVBag[] = [
     flowRate: 60,
     startTime: Date.now() - 15 * 60 * 1000,
     status: "running",
+    anomaly: "FAST_DRAIN", // TEST: đổi thành "FAST_DRAIN" để test đỏ
     historyLogs: generateMockHistory(1000, 60, Date.now() - 15 * 60 * 1000),
   },
   {
@@ -155,10 +159,21 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
               updatedLogs = trimHistoryLogs([...updatedLogs, { time: now, volume: newVol, flowRate: newFlowRate }]);
             }
 
-            if (newVol <= 0) {
-              return { ...bag, currentVolume: 0, status: "empty", emptyTimestamp: now, historyLogs: updatedLogs, flowRate: newFlowRate };
+            // Anomaly detection: FAST_DRAIN if flow rate > 5x expected, WARNING if > 3x
+            // Chỉ SET anomaly, không tự xóa - giữ nguyên cho đến khi user tạm dừng
+            let anomaly = bag.anomaly;
+            if (!anomaly && bag.esp32Id && lastLog) {
+              if (newFlowRate > bag.flowRate * 5) {
+                anomaly = "FAST_DRAIN";
+              } else if (newFlowRate > bag.flowRate * 3) {
+                anomaly = "FAST_DRAIN_WARNING";
+              }
             }
-            return { ...bag, currentVolume: newVol, historyLogs: updatedLogs, flowRate: newFlowRate };
+
+            if (newVol <= 0) {
+              return { ...bag, currentVolume: 0, status: "empty", emptyTimestamp: now, historyLogs: updatedLogs, flowRate: newFlowRate, anomaly };
+            }
+            return { ...bag, currentVolume: newVol, historyLogs: updatedLogs, flowRate: newFlowRate, anomaly };
           }
 
           if (bag.status === "empty" && bag.emptyTimestamp) {
@@ -227,8 +242,8 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
     setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, status } : bag)));
   }, []);
 
-  const completeBagManually = useCallback((id: string) => {
-    setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, status: "completed" } : bag)));
+  const completeBagManually = useCallback((id: string, stopReason: "NORMAL" | "ERROR" = "NORMAL") => {
+    setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, status: "completed", stopReason } : bag)));
   }, []);
 
   const updateFromESP32 = useCallback((esp32Id: string, data: { roomBed: string; remainingVolume: number; dropsPerSecond: number }) => {
@@ -326,6 +341,18 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const moveToMaintenance = useCallback((esp32Id: string) => {
+    setEsp32Devices((prev) =>
+      prev.map((d) => (d.id === esp32Id ? { ...d, maintenance: true, patientId: undefined, bagId: undefined } : d))
+    );
+  }, []);
+
+  const resolveMaintenance = useCallback((esp32Id: string) => {
+    setEsp32Devices((prev) =>
+      prev.map((d) => (d.id === esp32Id ? { ...d, maintenance: false } : d))
+    );
+  }, []);
+
   const removeEsp32 = useCallback((esp32Id: string) => {
     setEsp32Devices((prev) => prev.filter((d) => d.id !== esp32Id));
   }, []);
@@ -351,6 +378,8 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
         assignPatientToEsp32,
         releaseEsp32,
         removeEsp32,
+        moveToMaintenance,
+        resolveMaintenance,
       }}
     >
       {children}

@@ -14,6 +14,8 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
 
   const [selectedPatient, setSelectedPatient] = useState("new");
   const [patientName, setPatientName] = useState("");
+  const [age, setAge] = useState("");
+  const [condition, setCondition] = useState("");
   const [room, setRoom] = useState("");
   const [bed, setBed] = useState("");
   const [bagType, setBagType] = useState("Nước muối sinh lý 0.9%");
@@ -31,7 +33,13 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
         toast.error("Vui lòng nhập đầy đủ thông tin bệnh nhân");
         return;
       }
-      pId = addPatient({ name: patientName, room, bed });
+      pId = addPatient({
+        name: patientName,
+        room,
+        bed,
+        age: age ? parseInt(age, 10) : undefined,
+        condition: condition || undefined
+      });
     }
 
     assignPatientToEsp32(esp32Id, pId, {
@@ -45,6 +53,8 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
     // Reset form
     setSelectedPatient("new");
     setPatientName("");
+    setAge("");
+    setCondition("");
     setRoom("");
     setBed("");
     setBagType("Nước muối sinh lý 0.9%");
@@ -95,26 +105,46 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
                 />
               </div>
               <div className="flex gap-4">
+                <div className="w-24">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tuổi</label>
+                  <input
+                    type="number"
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="45"
+                  />
+                </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phòng</label>
                   <input
                     type="text"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="101"
                   />
                 </div>
-                <div className="flex-1">
+                <div className="w-16">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Giường</label>
                   <input
                     type="text"
                     value={bed}
                     onChange={(e) => setBed(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="1"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bệnh lý / Tình trạng</label>
+                <input
+                  type="text"
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="VD: Sốt xuất huyết, Tiểu đường..."
+                />
               </div>
             </>
           )}

@@ -1,10 +1,9 @@
 import React from "react";
 import { IVBag, Patient } from "../types";
 import { calculateTimeRemainingInMinutes, formatTimeRemaining, cn } from "../lib/utils";
-import { AlertCircle, Play, Pause, CheckCircle, Activity, User, Bed, Clock, Edit2, Wrench } from "lucide-react";
+import { AlertCircle, Play, Pause, CheckCircle, Activity, User, Bed, Clock, Edit2 } from "lucide-react";
 import { useIVBag } from "../context/IVBagContext";
 import { useNavigate } from "react-router";
-import { toast } from "sonner";
 
 import { EditPatientModal } from "./EditPatientModal";
 
@@ -14,19 +13,20 @@ interface BagCardProps {
 }
 
 export function BagCard({ bag, patient }: BagCardProps) {
-  const { changeBagStatus, completeBagManually, reportMachine } = useIVBag();
+  const { changeBagStatus, completeBagManually } = useIVBag();
   const navigate = useNavigate();
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
 
   const isRunning = bag.status === "running";
   const isEmpty = bag.status === "empty";
   const isCompleted = bag.status === "completed";
+  const hasAnomaly = bag.anomaly === "FAST_DRAIN" || bag.anomaly === "FAST_DRAIN_WARNING";
 
   const timeRemainingMinutes = calculateTimeRemainingInMinutes(bag.currentVolume, bag.flowRate);
   const percentRemaining = Math.max(0, Math.min(100, (bag.currentVolume / bag.initialVolume) * 100));
 
-  // Cảnh báo nếu dưới 50ml hoặc dưới 15 phút
-  const isWarning = !isEmpty && !isCompleted && (bag.currentVolume <= 50 || timeRemainingMinutes <= 15);
+  // Cảnh báo nếu dưới 50ml hoặc dưới 15 phút (không áp dụng khi có anomaly)
+  const isWarning = !hasAnomaly && !isEmpty && !isCompleted && (bag.currentVolume <= 50 || timeRemainingMinutes <= 15);
 
   const handleStopResume = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -35,17 +35,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
 
   const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    completeBagManually(bag.id);
-  };
-
-  const handleReport = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (bag.esp32Id) {
-      reportMachine(bag.esp32Id, `P${patient.room} G${patient.bed}`);
-      toast.success(`Đã báo cáo thiết bị ${bag.esp32Id} cần kiểm tra/sửa chữa`);
-    } else {
-      toast.error("Thiết bị này không có mã ESP32 để báo cáo.");
-    }
+    completeBagManually(bag.id, hasAnomaly ? "ERROR" : "NORMAL");
   };
 
   const statusColor = {
@@ -56,20 +46,28 @@ export function BagCard({ bag, patient }: BagCardProps) {
   }[bag.status];
 
   return (
-    <div 
+    <div
       onClick={() => navigate(`/patient/${patient.id}`)}
       className={cn(
         "bg-white rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all hover:shadow-md cursor-pointer group",
-        isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
-        isEmpty && "border-red-300 ring-1 ring-red-300",
-        !isWarning && !isEmpty && "border-gray-100"
+        hasAnomaly && bag.anomaly === "FAST_DRAIN" && "border-red-400 ring-2 ring-red-200",
+        hasAnomaly && bag.anomaly === "FAST_DRAIN_WARNING" && "border-yellow-400 ring-2 ring-yellow-200",
+        !hasAnomaly && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
+        !hasAnomaly && isEmpty && "border-red-300 ring-1 ring-red-300",
+        !hasAnomaly && !isWarning && !isEmpty && "border-gray-100"
       )}
     >
-      {/* Background Pulse for Warning */}
-      {isWarning && isRunning && (
+      {/* Background Pulse for Warning / Anomaly */}
+      {hasAnomaly && bag.anomaly === "FAST_DRAIN" && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-red-500 animate-pulse" />
+      )}
+      {hasAnomaly && bag.anomaly === "FAST_DRAIN_WARNING" && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-yellow-400 animate-pulse" />
+      )}
+      {!hasAnomaly && isWarning && isRunning && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-orange-400 animate-pulse" />
       )}
-      {isEmpty && (
+      {!hasAnomaly && isEmpty && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-red-500 animate-pulse" />
       )}
 
@@ -82,7 +80,8 @@ export function BagCard({ bag, patient }: BagCardProps) {
           <div>
             <h3 className="font-semibold text-gray-800 flex items-center gap-2">
               {patient.name}
-              {isWarning && <AlertCircle size={16} className="text-orange-500" />}
+              {hasAnomaly && <AlertCircle size={16} className={bag.anomaly === "FAST_DRAIN" ? "text-red-500" : "text-yellow-500"} />}
+              {!hasAnomaly && isWarning && <AlertCircle size={16} className="text-orange-500" />}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -165,33 +164,35 @@ export function BagCard({ bag, patient }: BagCardProps) {
       {/* Actions */}
       {!isCompleted && (
         <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-          {!isEmpty && (
+          {hasAnomaly ? (
             <button
-              onClick={handleStopResume}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors",
-                isRunning 
-                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100" 
-                  : "bg-green-50 text-green-700 hover:bg-green-100"
+              onClick={handleComplete}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors"
+            >
+              <AlertCircle size={14}/> Tạm dừng
+            </button>
+          ) : (
+            <>
+              {!isEmpty && (
+                <button
+                  onClick={handleStopResume}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors",
+                    isRunning
+                      ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "bg-green-50 text-green-700 hover:bg-green-100"
+                  )}
+                >
+                  {isRunning ? <><Pause size={14}/> Dừng</> : <><Play size={14}/> Tiếp</>}
+                </button>
               )}
-            >
-              {isRunning ? <><Pause size={14}/> Dừng</> : <><Play size={14}/> Tiếp</>}
-            </button>
-          )}
-          <button
-            onClick={handleComplete}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <CheckCircle size={14}/> Kết thúc
-          </button>
-          {bag.esp32Id && (
-            <button
-              onClick={handleReport}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-              title="Báo cáo thiết bị lỗi"
-            >
-              <Wrench size={14}/> Báo cáo
-            </button>
+              <button
+                onClick={handleComplete}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <CheckCircle size={14}/> Kết thúc
+              </button>
+            </>
           )}
         </div>
       )}

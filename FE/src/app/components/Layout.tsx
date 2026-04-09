@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 export function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { reportedMachines } = useIVBag();
+  const { reportedMachines, esp32Devices } = useIVBag();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -17,14 +17,16 @@ export function Layout() {
     navigate("/login");
   };
 
+  const maintenanceCount = esp32Devices.filter((d) => d.maintenance).length;
+
   const navItems = [
     { name: "Tổng quan", path: "/", icon: LayoutDashboard },
     { name: "Lịch sử", path: "/history", icon: History },
-    { 
-      name: "Bảo trì", 
-      path: "/reports", 
+    {
+      name: "Bảo trì",
+      path: "/reports",
       icon: Wrench,
-      badge: reportedMachines.length > 0 ? reportedMachines.length : undefined
+      badge: maintenanceCount > 0 ? maintenanceCount : undefined
     },
     { name: "Cài đặt", path: "/settings", icon: Settings },
   ];
@@ -106,7 +108,9 @@ export function Layout() {
           <div className="flex items-center gap-3 md:gap-4">
             <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
               <Bell size={20} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+              {maintenanceCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+              )}
             </button>
           </div>
         </header>

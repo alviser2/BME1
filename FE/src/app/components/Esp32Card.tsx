@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router";
 import { Esp32Device, IVBag, Patient } from "../types";
 import { calculateTimeRemainingInMinutes, formatTimeRemaining, cn } from "../lib/utils";
-import { AlertCircle, Activity, Clock, User, Wifi, WifiOff, Edit2, CheckCircle } from "lucide-react";
+import { AlertCircle, Activity, Clock, User, Wifi, WifiOff, Edit2, CheckCircle, AlertTriangle } from "lucide-react";
 import { useIVBag } from "../context/IVBagContext";
 import { EditPatientModal } from "./EditPatientModal";
 
@@ -15,16 +15,20 @@ interface Esp32CardProps {
 
 export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
   const navigate = useNavigate();
-  const { completeBagManually, releaseEsp32 } = useIVBag();
+  const { completeBagManually, releaseEsp32, moveToMaintenance, reportMachine } = useIVBag();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const hasPatient = !!device.patientId && !!patient;
   const isRunning = bag?.status === "running";
   const isEmpty = bag?.status === "empty";
   const isCompleted = bag?.status === "completed";
+  const isAnomalyCritical = bag?.anomaly === "FAST_DRAIN";
+  const isAnomalyWarning = bag?.anomaly === "FAST_DRAIN_WARNING";
+  const hasAnomaly = isAnomalyCritical || isAnomalyWarning;
 
   const timeRemainingMinutes = bag ? calculateTimeRemainingInMinutes(bag.currentVolume, bag.flowRate) : 0;
   const percentRemaining = bag ? Math.max(0, Math.min(100, (bag.currentVolume / bag.initialVolume) * 100)) : 0;
-  const isWarning = hasPatient && !isEmpty && !isCompleted && (bag!.currentVolume <= 50 || timeRemainingMinutes <= 15);
+  // Warning: sắp hết chai nhưng KHÔNG có anomaly
+  const isWarning = hasPatient && !isEmpty && !isCompleted && !hasAnomaly && (bag!.currentVolume <= 50 || timeRemainingMinutes <= 15);
 
   const handleCardClick = () => {
     if (hasPatient && patient) {
@@ -37,8 +41,18 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
   const handleEndSession = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (bag) {
-      completeBagManually(bag.id);
+      completeBagManually(bag.id, hasAnomaly ? "ERROR" : "NORMAL");
       releaseEsp32(device.id);
+    }
+  };
+
+  const handlePause = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (bag) {
+      completeBagManually(bag.id, "ERROR");
+      // Báo cáo lỗi + chuyển sang bảo trì
+      reportMachine(device.id, patient ? `P${patient.room} G${patient.bed}` : device.id);
+      moveToMaintenance(device.id);
     }
   };
 
@@ -49,17 +63,21 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
         className={cn(
           "bg-white rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all hover:shadow-md cursor-pointer group",
           !hasPatient && "border-dashed border-gray-300 bg-gray-50/50",
-          hasPatient && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
-          hasPatient && isEmpty && "border-red-300 ring-1 ring-red-300",
-          hasPatient && !isWarning && !isEmpty && "border-gray-100"
+          hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN" && "border-red-400 ring-2 ring-red-200",
+          hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN_WARNING" && "border-yellow-400 ring-2 ring-yellow-200",
+          hasPatient && !hasAnomaly && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
+          hasPatient && !hasAnomaly && isEmpty && "border-red-300 ring-1 ring-red-300",
+          hasPatient && !hasAnomaly && !isWarning && !isEmpty && "border-gray-100"
         )}
       >
         {/* Status indicator */}
         <div className="absolute top-0 left-0 right-0 h-1 flex">
           {!hasPatient && <div className="flex-1 bg-gray-300" />}
-          {hasPatient && isRunning && <div className="flex-1 bg-green-500 animate-pulse" />}
-          {hasPatient && isEmpty && <div className="flex-1 bg-red-500 animate-pulse" />}
-          {hasPatient && isWarning && <div className="flex-1 bg-orange-400 animate-pulse" />}
+          {hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN" && <div className="flex-1 bg-red-500 animate-pulse" />}
+          {hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN_WARNING" && <div className="flex-1 bg-yellow-400 animate-pulse" />}
+          {hasPatient && !hasAnomaly && isRunning && <div className="flex-1 bg-green-500 animate-pulse" />}
+          {hasPatient && !hasAnomaly && isEmpty && <div className="flex-1 bg-red-500 animate-pulse" />}
+          {hasPatient && !hasAnomaly && isWarning && <div className="flex-1 bg-orange-400 animate-pulse" />}
           {hasPatient && isCompleted && <div className="flex-1 bg-gray-400" />}
         </div>
 
@@ -75,7 +93,9 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
             <div>
               <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                 {device.id}
-                {isWarning && <AlertCircle size={16} className="text-orange-500" />}
+                {isAnomalyCritical && <AlertCircle size={16} className="text-red-500" />}
+                {isAnomalyWarning && <AlertCircle size={16} className="text-yellow-500" />}
+                {!hasAnomaly && isWarning && <AlertCircle size={16} className="text-orange-500" />}
               </h3>
               {hasPatient && patient && (
                 <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -192,13 +212,27 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
             {/* Action Buttons */}
             {(isRunning || isEmpty) && (
               <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
-                <button
-                  onClick={handleEndSession}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                >
-                  <CheckCircle size={14} />
-                  Kết thúc
-                </button>
+                {hasAnomaly ? (
+                  <>
+                    <button
+                      onClick={handlePause}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+                    >
+                      <AlertTriangle size={14} />
+                      Tạm dừng
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleEndSession}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                    >
+                      <CheckCircle size={14} />
+                      Kết thúc
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useIVBag } from "../context/IVBagContext";
-import { Clock, Archive, User, FileText, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
+import { Clock, Archive, User, FileText, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -103,6 +103,8 @@ export function History() {
   const totalVolume = completedBags.reduce((sum, b) => sum + b.initialVolume, 0);
   const totalSessions = completedBags.length;
   const uniquePatients = Object.keys(groupedByPatient).length;
+  const successSessions = completedBags.filter((b) => b.stopReason !== "ERROR").length;
+  const errorSessions = completedBags.filter((b) => b.stopReason === "ERROR").length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -126,18 +128,22 @@ export function History() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
           <p className="text-sm text-gray-500 mb-1">Tổng thể tích đã truyền</p>
           <p className="text-2xl font-bold text-gray-900">{totalVolume.toLocaleString()} <span className="text-sm font-medium text-gray-400">ml</span></p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-sm text-gray-500 mb-1">Số phiên truyền</p>
-          <p className="text-2xl font-bold text-gray-900">{totalSessions}</p>
+          <p className="text-sm text-gray-500 mb-1">Phiên truyền thành công</p>
+          <p className="text-2xl font-bold text-green-600">{successSessions}</p>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+          <p className="text-sm text-gray-500 mb-1">Phiên có lỗi thiết bị</p>
+          <p className="text-2xl font-bold text-red-600">{errorSessions}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
           <p className="text-sm text-gray-500 mb-1">Số bệnh nhân</p>
-          <p className="text-2xl font-bold text-gray-900">{uniquePatients}</p>
+          <p className="text-2xl font-bold text-blue-600">{uniquePatients}</p>
         </div>
       </div>
 
@@ -216,10 +222,17 @@ export function History() {
                               <span className="text-xs text-gray-400">
                                 {bag.historyLogs.length} điểm dữ liệu
                               </span>
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">
-                                <CheckCircle2 size={14} />
-                                Hoàn thành
-                              </span>
+                              {bag.stopReason === "ERROR" ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-700 text-sm font-medium rounded-full">
+                                  <AlertTriangle size={14} />
+                                  Lỗi thiết bị
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">
+                                  <CheckCircle2 size={14} />
+                                  Hoàn thành
+                                </span>
+                              )}
                             </div>
                           </div>
 

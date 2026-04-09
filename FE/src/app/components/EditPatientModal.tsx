@@ -83,7 +83,7 @@ export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientM
               />
             </div>
             
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-end">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tuổi</label>
                 <input
@@ -93,28 +93,26 @@ export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientM
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
-              <div className="flex gap-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phòng</label>
                 <input
                   type="text"
                   value={room}
                   onChange={(e) => setRoom(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="101"
                 />
               </div>
-              <div className="flex-1">
+              <div className="w-20">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Giường</label>
                 <input
                   type="text"
                   value={bed}
                   onChange={(e) => setBed(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="1"
                 />
               </div>
-            </div>
             </div>
             
             <div>

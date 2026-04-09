@@ -16,13 +16,14 @@ export function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("timeAsc");
 
-  // Lọc ESP32 đang hoạt động (có bệnh nhân)
+  // Lọc ESP32 đang hoạt động (có bệnh nhân, không tính đang bảo trì)
   const activeEsp32Devices = useMemo(() => {
-    return esp32Devices.filter((d) => d.patientId);
+    return esp32Devices.filter((d) => d.patientId && !d.maintenance);
   }, [esp32Devices]);
 
   const filteredAndSortedDevices = useMemo(() => {
-    let result = esp32Devices; // Hiển thị tất cả ESP32, kể cả chưa gán
+    // Không hiển thị thiết bị đang bảo trì
+    let result = esp32Devices.filter((d) => !d.maintenance);
 
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
@@ -82,7 +83,7 @@ export function Dashboard() {
     (b) => b.currentVolume <= 50 || calculateTimeRemainingInMinutes(b.currentVolume, b.flowRate) <= 15
   ).length;
   const emptyCount = runningBags.filter((b) => b.status === "empty").length;
-  const waitingCount = esp32Devices.filter((d) => !d.patientId).length;
+  const waitingCount = esp32Devices.filter((d) => !d.patientId && !d.maintenance).length;
 
   const handleAssignClick = (esp32Id: string) => {
     setSelectedEsp32Id(esp32Id);
