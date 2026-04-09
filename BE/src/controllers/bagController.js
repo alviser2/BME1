@@ -60,6 +60,36 @@ export const bagController = {
     }
   },
 
+  // GET /bags/:id/export - Export data (volume + flowRate) cho analysis
+  async exportData(req, res) {
+    try {
+      const { startTime, endTime } = req.query;
+      const data = await bagModel.exportData(
+        req.params.id,
+        startTime || null,
+        endTime || null
+      );
+
+      // Parse dates if provided
+      const params = [req.params.id];
+      let query = `SELECT time, volume, flow_rate FROM bag_logs WHERE bag_id = $1`;
+      if (startTime) {
+        params.push(startTime);
+        query += ` AND time >= $${params.length}`;
+      }
+      if (endTime) {
+        params.push(endTime);
+        query += ` AND time <= $${params.length}`;
+      }
+      query += ` ORDER BY time ASC`;
+
+      res.json(data);
+    } catch (err) {
+      console.error('Error exportData:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+
   // POST /bags
   async create(req, res) {
     try {
@@ -80,8 +110,8 @@ export const bagController = {
   // PUT /bags/:id
   async update(req, res) {
     try {
-      const { type, esp32Id, flowRate, status, emptyTimestamp } = req.body;
-      const bag = await bagModel.update(req.params.id, { type, esp32Id, flowRate, status, emptyTimestamp });
+      const { type, esp32Id, flowRate, status, currentVolume, emptyTimestamp } = req.body;
+      const bag = await bagModel.update(req.params.id, { type, esp32Id, flowRate, status, currentVolume, emptyTimestamp });
 
       if (!bag) {
         return res.status(404).json({ error: 'Bag not found' });
@@ -128,7 +158,7 @@ export const bagController = {
     }
   },
 
-  // POST /esp32/update - ESP32 webhook để gửi data
+  // POST /esp32/update - ESP32 webhook để gửi data (5s一次)
   async esp32Update(req, res) {
     try {
       const { esp32_id, volume, flow_rate } = req.body;
@@ -137,19 +167,28 @@ export const bagController = {
         return res.status(400).json({ error: 'esp32_id, volume, flow_rate are required' });
       }
 
-      // Cập nhật bag từ ESP32
-      const bag = await bagModel.updateFromESP32(esp32_id, { volume, flow_rate });
+      // Cập nhật bag từ ESP32 + kiểm tra bất thường
+      const result = await bagModel.updateFromESP32(esp32_id, { volume, flow_rate });
 
-      if (!bag) {
+      if (!result) {
         return res.status(404).json({ error: 'Bag not found or not running' });
       }
 
-      // Ghi log (5s一次)
-      await bagModel.insertLog(bag.id, { volume: Math.max(0, volume), flowRate: flow_rate });
-
-      res.json({ success: true, bag });
+      const { bag, anomaly } = result;
+      res.json({ success: true, bag, anomaly: anomaly || null });
     } catch (err) {
       console.error('Error esp32Update:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+
+  // GET /bags/anomalies - Kiểm tra tất cả bags cho bất thường
+  async checkAnomalies(req, res) {
+    try {
+      const anomalies = await bagModel.checkAllBagsForAnomalies();
+      res.json({ anomalies });
+    } catch (err) {
+      console.error('Error checkAnomalies:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

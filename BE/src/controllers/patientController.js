@@ -29,13 +29,13 @@ export const patientController = {
   // POST /patients
   async create(req, res) {
     try {
-      const { name, roomBed, age, condition } = req.body;
+      const { name, room, bed, age, condition } = req.body;
 
-      if (!name || !roomBed) {
-        return res.status(400).json({ error: 'name and roomBed are required' });
+      if (!name || !room || !bed) {
+        return res.status(400).json({ error: 'name, room, and bed are required' });
       }
 
-      const patient = await patientModel.create({ name, roomBed, age, condition });
+      const patient = await patientModel.create({ name, room, bed, age, condition });
       res.status(201).json(patient);
     } catch (err) {
       console.error('Error create patient:', err);
@@ -46,8 +46,8 @@ export const patientController = {
   // PUT /patients/:id
   async update(req, res) {
     try {
-      const { name, roomBed, age, condition } = req.body;
-      const patient = await patientModel.update(req.params.id, { name, roomBed, age, condition });
+      const { name, room, bed, age, condition } = req.body;
+      const patient = await patientModel.update(req.params.id, { name, room, bed, age, condition });
 
       if (!patient) {
         return res.status(404).json({ error: 'Patient not found' });

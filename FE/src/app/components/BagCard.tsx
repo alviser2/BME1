@@ -41,7 +41,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
   const handleReport = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (bag.esp32Id) {
-      reportMachine(bag.esp32Id, patient.roomBed);
+      reportMachine(bag.esp32Id, `P${patient.room} G${patient.bed}`);
       toast.success(`Đã báo cáo thiết bị ${bag.esp32Id} cần kiểm tra/sửa chữa`);
     } else {
       toast.error("Thiết bị này không có mã ESP32 để báo cáo.");
@@ -95,7 +95,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
               </button>
             </h3>
             <p className="text-xs text-gray-500 flex items-center gap-1">
-              <Bed size={12} /> {patient.roomBed}
+              <Bed size={12} /> P{patient.room} G{patient.bed}
             </p>
           </div>
         </div>
@@ -124,7 +124,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
             <Activity size={12} /> Tốc độ
           </p>
           <p className="font-medium text-gray-800 text-sm">
-            {bag.flowRate} giọt/phút
+            {bag.flowRate.toFixed(1)} giọt/phút
           </p>
         </div>
       </div>

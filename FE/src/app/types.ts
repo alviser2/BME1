@@ -1,12 +1,20 @@
 export interface Patient {
   id: string;
   name: string;
-  roomBed: string;
+  room: string;
+  bed: string;
   age?: number;
   condition?: string;
 }
 
 export type BagStatus = "running" | "stopped" | "empty" | "completed";
+
+export interface Esp32Device {
+  id: string;
+  patientId?: string;
+  bagId?: string;
+  registeredAt: number;
+}
 
 export interface DataPoint {
   time: number; // timestamp

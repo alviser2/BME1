@@ -12,19 +12,20 @@ interface EditPatientModalProps {
 
 export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientModalProps) {
   const { updatePatient, updateBag } = useIVBag();
-  
+
   const [name, setName] = useState(patient.name);
-  const [roomBed, setRoomBed] = useState(patient.roomBed);
+  const [room, setRoom] = useState(patient.room);
+  const [bed, setBed] = useState(patient.bed);
   const [age, setAge] = useState(patient.age?.toString() || "");
   const [condition, setCondition] = useState(patient.condition || "");
-  
   const [bagType, setBagType] = useState(bag?.type || "");
   const [esp32Id, setEsp32Id] = useState(bag?.esp32Id || "");
-  
+
   useEffect(() => {
     if (isOpen) {
       setName(patient.name);
-      setRoomBed(patient.roomBed);
+      setRoom(patient.room);
+      setBed(patient.bed);
       setAge(patient.age?.toString() || "");
       setCondition(patient.condition || "");
       setBagType(bag?.type || "");
@@ -36,10 +37,11 @@ export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientM
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     updatePatient(patient.id, {
       name,
-      roomBed,
+      room,
+      bed,
       age: age ? parseInt(age, 10) : undefined,
       condition: condition || undefined
     });
@@ -91,16 +93,28 @@ export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientM
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
-              <div className="flex-[2]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phòng/Giường</label>
+              <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phòng</label>
                 <input
                   type="text"
-                  value={roomBed}
-                  onChange={(e) => setRoomBed(e.target.value)}
+                  value={room}
+                  onChange={(e) => setRoom(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  placeholder="101"
                 />
               </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Giường</label>
+                <input
+                  type="text"
+                  value={bed}
+                  onChange={(e) => setBed(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="1"
+                />
+              </div>
+            </div>
             </div>
             
             <div>

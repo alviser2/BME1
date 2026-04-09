@@ -11,13 +11,17 @@ router.get('/bags/all', bagController.getAllIncludingCompleted);
 router.get('/bags/:id', bagController.getById);
 router.get('/bags/patient/:patientId', bagController.getByPatientId);
 router.get('/bags/:id/history', bagController.getHistory);
+router.get('/bags/:id/export', bagController.exportData);
 router.post('/bags', bagController.create);
 router.put('/bags/:id', bagController.update);
 router.put('/bags/:id/status', bagController.updateStatus);
 router.delete('/bags/:id', bagController.delete);
 
-// ========== ESP32 WEBHOOK ==========
+// ========== ESP32 WEBHOOK (5s一次) ==========
 router.post('/esp32/update', bagController.esp32Update);
+
+// ========== ANOMALY CHECK ==========
+router.get('/bags/anomalies', bagController.checkAnomalies);
 
 // ========== PATIENTS ==========
 router.get('/patients', patientController.getAll);

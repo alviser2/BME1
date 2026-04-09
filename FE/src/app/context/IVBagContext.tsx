@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
-import { Patient, IVBag, BagStatus, DataPoint, ReportedMachine } from "../types";
+import { Patient, IVBag, BagStatus, DataPoint, ReportedMachine, Esp32Device } from "../types";
 import { dropsToMlPerSec } from "../lib/utils";
 
 // ========== CONSTANTS ==========
@@ -11,6 +11,7 @@ const TICK_INTERVAL_MS = 1000;     // 1 giây - interval tick
 interface IVBagContextType {
   patients: Patient[];
   bags: IVBag[];
+  esp32Devices: Esp32Device[];
   addPatient: (patient: Omit<Patient, "id">) => string;
   updatePatient: (id: string, updates: Partial<Patient>) => void;
   addBag: (bag: Omit<IVBag, "id" | "startTime" | "status" | "historyLogs">) => string;
@@ -22,12 +23,16 @@ interface IVBagContextType {
   reportedMachines: ReportedMachine[];
   reportMachine: (esp32Id: string, roomBed: string) => void;
   resolveMachine: (esp32Id: string) => void;
+  addEsp32: (esp32Id: string) => string;
+  assignPatientToEsp32: (esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => string;
+  releaseEsp32: (esp32Id: string) => void;
+  removeEsp32: (esp32Id: string) => void;
 }
 
 const mockPatients: Patient[] = [
-  { id: "p1", name: "Nguyễn Văn A", roomBed: "Phòng 101 - Giường 1", age: 45, condition: "Sốt xuất huyết" },
-  { id: "p2", name: "Trần Thị B", roomBed: "Phòng 102 - Giường 3", age: 60, condition: "Tiêu chảy cấp" },
-  { id: "p3", name: "Lê Văn C", roomBed: "Phòng 205 - Giường 2", age: 32, condition: "Mất nước" },
+  { id: "p1", name: "Nguyễn Văn A", room: "101", bed: "1", age: 45, condition: "Sốt xuất huyết" },
+  { id: "p2", name: "Trần Thị B", room: "102", bed: "3", age: 60, condition: "Tiêu chảy cấp" },
+  { id: "p3", name: "Lê Văn C", room: "205", bed: "2", age: 32, condition: "Mất nước" },
 ];
 
 // Sinh dữ liệu lịch sử giả định cho 1 bình đang truyền (bắt đầu cách đây 1 giờ)
@@ -84,6 +89,14 @@ const mockBags: IVBag[] = [
   },
 ];
 
+// Mock ESP32 devices: 1 đã gắn bệnh nhân, 2 đang chờ
+const mockEsp32Devices: Esp32Device[] = [
+  { id: "ESP32_001", patientId: "p1", bagId: "b1", registeredAt: Date.now() - 3600 * 1000 },
+  { id: "ESP32_002", patientId: "p2", bagId: "b2", registeredAt: Date.now() - 15 * 60 * 1000 },
+  { id: "ESP32_003", registeredAt: Date.now() },
+  { id: "ESP32_004", registeredAt: Date.now() },
+];
+
 const IVBagContext = createContext<IVBagContextType | undefined>(undefined);
 
 // ========== HELPER: Giới hạn log entries ==========
@@ -96,6 +109,7 @@ const trimHistoryLogs = (logs: DataPoint[]): DataPoint[] => {
 export function IVBagProvider({ children }: { children: ReactNode }) {
   const [patients, setPatients] = useState<Patient[]>(mockPatients);
   const [bags, setBags] = useState<IVBag[]>(mockBags);
+  const [esp32Devices, setEsp32Devices] = useState<Esp32Device[]>(mockEsp32Devices);
   const [reportedMachines, setReportedMachines] = useState<ReportedMachine[]>([]);
   const isActiveRef = useRef(true); // Ref để track visibility
 
@@ -253,15 +267,67 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
         };
 
         setPatients((prevPatients) =>
-          prevPatients.map((p) =>
-            p.id === bag.patientId && p.roomBed !== data.roomBed
-              ? { ...p, roomBed: data.roomBed }
-              : p
-          )
+          prevPatients.map((p) => {
+            if (p.id !== bag.patientId) return p;
+            const match = data.roomBed.match(/P(\d+)\s*-\s*G(\d+)/);
+            if (match) {
+              return { ...p, room: match[1], bed: match[2] };
+            }
+            return p;
+          })
         );
       }
       return updatedBags;
     });
+  }, []);
+
+  // ========== ESP32 DEVICE CALLBACKS ==========
+  const addEsp32 = useCallback((esp32Id: string) => {
+    setEsp32Devices((prev) => {
+      if (prev.find((d) => d.id === esp32Id)) return prev;
+      return [...prev, { id: esp32Id, registeredAt: Date.now() }];
+    });
+    return esp32Id;
+  }, []);
+
+  const assignPatientToEsp32 = useCallback((esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => {
+    // Create bag if bagInfo provided
+    let bagId: string | undefined;
+    if (bagInfo) {
+      bagId = `b${Date.now()}`;
+      const now = Date.now();
+      const newBag: IVBag = {
+        id: bagId,
+        patientId,
+        esp32Id,
+        type: bagInfo.type,
+        initialVolume: bagInfo.initialVolume,
+        currentVolume: bagInfo.initialVolume,
+        flowRate: bagInfo.flowRate,
+        startTime: now,
+        status: "running",
+        historyLogs: [{ time: now, volume: bagInfo.initialVolume, flowRate: bagInfo.flowRate }],
+      };
+      setBags((prev) => [...prev, newBag]);
+    }
+
+    // Update ESP32 device with patientId and bagId
+    setEsp32Devices((prev) =>
+      prev.map((d) => (d.id === esp32Id ? { ...d, patientId, bagId } : d))
+    );
+
+    return bagId || "";
+  }, []);
+
+  // Giải phóng ESP32 - xóa patientId và bagId để có thể gán bệnh nhân mới
+  const releaseEsp32 = useCallback((esp32Id: string) => {
+    setEsp32Devices((prev) =>
+      prev.map((d) => (d.id === esp32Id ? { ...d, patientId: undefined, bagId: undefined } : d))
+    );
+  }, []);
+
+  const removeEsp32 = useCallback((esp32Id: string) => {
+    setEsp32Devices((prev) => prev.filter((d) => d.id !== esp32Id));
   }, []);
 
   return (
@@ -269,6 +335,7 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
       value={{
         patients,
         bags,
+        esp32Devices,
         addPatient,
         updatePatient,
         addBag,
@@ -280,6 +347,10 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
         reportedMachines,
         reportMachine,
         resolveMachine,
+        addEsp32,
+        assignPatientToEsp32,
+        releaseEsp32,
+        removeEsp32,
       }}
     >
       {children}

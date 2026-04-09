@@ -5,7 +5,7 @@ export const bagModel = {
   // Lấy tất cả bags kèm thông tin patient
   async findAllWithPatient() {
     const query = `
-      SELECT b.*, p.name as patient_name, p.room_bed, p.condition
+      SELECT b.*, p.name as patient_name, p.room, p.bed, p.condition
       FROM iv_bags b
       JOIN patients p ON b.patient_id = p.id
       ORDER BY b.start_time DESC
@@ -16,7 +16,7 @@ export const bagModel = {
   // Lấy bags đang active (không completed)
   async findActiveWithPatient() {
     const query = `
-      SELECT b.*, p.name as patient_name, p.room_bed, p.condition
+      SELECT b.*, p.name as patient_name, p.room, p.bed, p.condition
       FROM iv_bags b
       JOIN patients p ON b.patient_id = p.id
       WHERE b.status != 'completed'
@@ -45,15 +45,15 @@ export const bagModel = {
     const id = `b${Date.now()}`;
     const startTime = new Date().toISOString();
     const query = `
-      INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, flow_rate, start_time, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'running')
+      INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, start_time, status)
+      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 'running')
       RETURNING *
     `;
     return (await pool.query(query, [id, patientId, esp32Id || null, type, initialVolume, flowRate, startTime])).rows[0];
   },
 
   // Cập nhật bag
-  async update(id, { type, esp32Id, flowRate, status, emptyTimestamp }) {
+  async update(id, { type, esp32Id, flowRate, status, currentVolume, emptyTimestamp }) {
     const fields = [];
     const values = [];
     let idx = 1;
@@ -62,6 +62,7 @@ export const bagModel = {
     if (esp32Id !== undefined) { fields.push(`esp32_id = $${idx++}`); values.push(esp32Id || null); }
     if (flowRate !== undefined) { fields.push(`flow_rate = $${idx++}`); values.push(flowRate); }
     if (status !== undefined) { fields.push(`status = $${idx++}`); values.push(status); }
+    if (currentVolume !== undefined) { fields.push(`current_volume = $${idx++}`); values.push(currentVolume); }
     if (emptyTimestamp !== undefined) { fields.push(`empty_timestamp = $${idx++}`); values.push(emptyTimestamp || null); }
 
     fields.push(`updated_at = NOW()`);
@@ -77,11 +78,32 @@ export const bagModel = {
     return (await pool.query(query, [id])).rows[0];
   },
 
-  // Cập nhật từ ESP32 (volume + flowRate)
+  // Cập nhật từ ESP32 (volume + flowRate) + kiểm tra bất thường
   async updateFromESP32(esp32Id, { volume, flowRate }) {
     const now = new Date().toISOString();
     let status = 'running';
     let emptyTimestamp = null;
+
+    // Lấy bag hiện tại để check bất thường
+    const currentBag = await this.findByEsp32Id(esp32Id);
+    if (!currentBag) return null;
+
+    // Kiểm tra bất thường: volume giảm quá nhanh so với flow_rate ban đầu
+    let anomaly = null;
+    if (volume > 0 && currentBag.initial_volume > 0) {
+      const expectedReductionPerCheck = (currentBag.flow_rate / 20 / 60) * 5; // ml giảm trong 5s
+      const actualReduction = currentBag.current_volume - volume;
+
+      // Nếu giảm gấp 3 lần so với expected → bất thường
+      if (actualReduction > expectedReductionPerCheck * 3 && actualReduction > 10) {
+        anomaly = {
+          type: 'FAST_DRAIN',
+          message: `Volume giảm nhanh bất thường: giảm ${actualReduction.toFixed(1)}ml trong 5s (expected: ${expectedReductionPerCheck.toFixed(1)}ml)`,
+          actualReduction: actualReduction,
+          expectedReduction: expectedReductionPerCheck
+        };
+      }
+    }
 
     if (volume <= 0) {
       status = 'empty';
@@ -98,7 +120,20 @@ export const bagModel = {
       WHERE esp32_id = $1 AND status IN ('running', 'empty')
       RETURNING *
     `;
-    return (await pool.query(query, [esp32Id, Math.max(0, volume), flowRate, status, emptyTimestamp, now])).rows[0];
+    const result = await pool.query(query, [esp32Id, Math.max(0, volume), flowRate, status, emptyTimestamp, now]);
+
+    // Ghi log (5s一次)
+    if (result.rows[0]) {
+      await this.insertLog(result.rows[0].id, { volume: Math.max(0, volume), flowRate });
+    }
+
+    return result.rows[0] ? { bag: result.rows[0], anomaly } : null;
+  },
+
+  // Lấy bag theo ESP32 ID
+  async findByEsp32Id(esp32Id) {
+    const query = `SELECT * FROM iv_bags WHERE esp32_id = $1 AND status != 'completed' LIMIT 1`;
+    return (await pool.query(query, [esp32Id])).rows[0];
   },
 
   // Lấy history logs cho chart (limit để tránh quá nặng)
@@ -111,6 +146,28 @@ export const bagModel = {
       LIMIT $2
     `;
     return (await pool.query(query, [bagId, limit])).rows;
+  },
+
+  // Export data (volume + flowRate) cho analysis
+  async exportData(bagId, startTime = null, endTime = null) {
+    let query = `
+      SELECT time, volume, flow_rate
+      FROM bag_logs
+      WHERE bag_id = $1
+    `;
+    const params = [bagId];
+
+    if (startTime) {
+      params.push(startTime);
+      query += ` AND time >= $${params.length}`;
+    }
+    if (endTime) {
+      params.push(endTime);
+      query += ` AND time <= $${params.length}`;
+    }
+
+    query += ` ORDER BY time ASC`;
+    return (await pool.query(query, params)).rows;
   },
 
   // Ghi log mới
@@ -134,5 +191,55 @@ export const bagModel = {
       RETURNING *
     `;
     return (await pool.query(query)).rows;
+  },
+
+  // Kiểm tra tất cả bags cho bất thường (chạy mỗi 5s)
+  async checkAllBagsForAnomalies() {
+    const query = `
+      SELECT b.*, p.name as patient_name
+      FROM iv_bags b
+      JOIN patients p ON b.patient_id = p.id
+      WHERE b.status = 'running' AND b.esp32_id IS NOT NULL
+    `;
+    const bags = (await pool.query(query)).rows;
+    const anomalies = [];
+
+    for (const bag of bags) {
+      if (bag.current_volume <= 0 || bag.initial_volume <= 0) continue;
+
+      // Tính expected giảm trong 5s theo flow_rate hiện tại
+      const expectedReductionPerCheck = (bag.flow_rate / 20 / 60) * 5;
+
+      // Lấy log gần nhất trước đó để so sánh
+      const lastLogQuery = `
+        SELECT volume FROM bag_logs
+        WHERE bag_id = $1
+        ORDER BY time DESC
+        LIMIT 2
+      `;
+      const lastLogs = (await pool.query(lastLogQuery, [bag.id])).rows;
+
+      if (lastLogs.length >= 2) {
+        const actualReduction = lastLogs[1].volume - bag.current_volume;
+
+        // Ngưỡng bất thường: giảm gấp 3 lần hoặc giảm >50ml trong khi expected <20ml
+        if (actualReduction > expectedReductionPerCheck * 3 && actualReduction > 30) {
+          anomalies.push({
+            bagId: bag.id,
+            patientName: bag.patient_name,
+            esp32Id: bag.esp32_id,
+            type: 'FAST_DRAIN',
+            message: `Tốc độ drain bất thường: giảm ${actualReduction.toFixed(1)}ml/5s (expected: ${expectedReductionPerCheck.toFixed(1)}ml)`,
+            currentVolume: bag.current_volume,
+            flowRate: bag.flow_rate,
+            expectedReduction: expectedReductionPerCheck,
+            actualReduction: actualReduction,
+            severity: actualReduction > expectedReductionPerCheck * 5 ? 'HIGH' : 'MEDIUM'
+          });
+        }
+      }
+    }
+
+    return anomalies;
   }
 };

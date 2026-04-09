@@ -57,7 +57,39 @@ export function PatientDetails() {
     );
 
     const volumeData = sortedLogs.map(log => Math.round(log.volume));
-    const flowRateData = sortedLogs.map(log => Math.round(log.flowRate));
+
+    // Tính flow rate từ thay đổi volume (ml/s -> giọt/phút)
+    // 20 giọt = 1ml, vậy flowRate = (volumeLost / timeLostSeconds) * 60 / 20
+    const flowRateData: number[] = [];
+    for (let i = 0; i < sortedLogs.length; i++) {
+      if (i === 0) {
+        // Log đầu tiên: lấy flow rate ban đầu hoặc tính từ initial volume và thời gian bắt đầu
+        flowRateData.push(Math.round(sortedLogs[i].flowRate));
+      } else {
+        const prevLog = sortedLogs[i - 1];
+        const currLog = sortedLogs[i];
+        const timeDiffMs = currLog.time - prevLog.time;
+        const volumeLost = prevLog.volume - currLog.volume;
+
+        if (timeDiffMs > 0 && volumeLost >= 0) {
+          const volumeLostPerSec = volumeLost / (timeDiffMs / 1000);
+          const dropsPerSec = volumeLostPerSec * 20; // 1ml = 20 giọt
+          const dropsPerMin = dropsPerSec * 60;
+          flowRateData.push(Math.round(dropsPerMin * 10) / 10); // 1 số thập phân
+        } else {
+          flowRateData.push(flowRateData[i - 1]);
+        }
+      }
+    }
+
+    // Chỉ thêm điểm cuối = 0ml khi túi đã thực sự hoàn thành (để line chart đi xuống 0)
+    // Không vẽ điểm 0 khi túi vẫn đang chạy
+    if (selectedBag.status === 'completed' && sortedLogs.length > 0) {
+      const lastTime = sortedLogs[sortedLogs.length - 1].time + 5000;
+      labels.push(new Date(lastTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      volumeData.push(0);
+      flowRateData.push(0);
+    }
 
     return {
       labels,
@@ -151,6 +183,10 @@ export function PatientDetails() {
           font: { size: 11 },
           color: '#3b82f6',
         },
+        min: 0,
+        max: selectedBag?.initialVolume
+          ? Math.ceil(selectedBag.initialVolume * 1.05 / 50) * 50
+          : undefined,
       },
       y1: {
         type: 'linear' as const,
@@ -169,12 +205,13 @@ export function PatientDetails() {
           font: { size: 11 },
           color: '#f97316',
         },
+        min: 0,
       },
     },
     animation: {
       duration: 500,
     },
-  }), []);
+  }), [selectedBag]);
 
   if (!patient) {
     return (
@@ -219,7 +256,7 @@ export function PatientDetails() {
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
             <span className="flex items-center gap-2">
-              <Bed size={16} className="text-gray-400"/> {patient.roomBed}
+              <Bed size={16} className="text-gray-400"/> P{patient.room} G{patient.bed}
             </span>
             {patient.age && (
               <span className="flex items-center gap-2">
@@ -302,7 +339,7 @@ export function PatientDetails() {
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                   <p className="text-xs text-gray-500 mb-1">Tốc độ hiện tại</p>
-                  <p className="text-lg font-bold text-orange-500">{selectedBag.flowRate} <span className="text-sm font-medium text-gray-500">giọt/p</span></p>
+                  <p className="text-lg font-bold text-orange-500">{selectedBag.flowRate.toFixed(1)} <span className="text-sm font-medium text-gray-500">giọt/p</span></p>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                   <p className="text-xs text-gray-500 mb-1">Thời gian còn lại</p>

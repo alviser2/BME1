@@ -12,23 +12,24 @@ export const patientModel = {
     return (await pool.query(query, [id])).rows[0];
   },
 
-  async create({ name, roomBed, age, condition }) {
+  async create({ name, room, bed, age, condition }) {
     const id = `p${Date.now()}`;
     const query = `
-      INSERT INTO patients (id, name, room_bed, age, condition)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO patients (id, name, room, bed, age, condition)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
-    return (await pool.query(query, [id, name, roomBed, age || null, condition || null])).rows[0];
+    return (await pool.query(query, [id, name, room, bed, age || null, condition || null])).rows[0];
   },
 
-  async update(id, { name, roomBed, age, condition }) {
+  async update(id, { name, room, bed, age, condition }) {
     const fields = [];
     const values = [];
     let idx = 1;
 
     if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
-    if (roomBed !== undefined) { fields.push(`room_bed = $${idx++}`); values.push(roomBed); }
+    if (room !== undefined) { fields.push(`room = $${idx++}`); values.push(room); }
+    if (bed !== undefined) { fields.push(`bed = $${idx++}`); values.push(bed); }
     if (age !== undefined) { fields.push(`age = $${idx++}`); values.push(age || null); }
     if (condition !== undefined) { fields.push(`condition = $${idx++}`); values.push(condition || null); }
 

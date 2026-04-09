@@ -15,7 +15,8 @@ DROP TABLE IF EXISTS reported_machines CASCADE;
 CREATE TABLE patients (
     id          VARCHAR(50) PRIMARY KEY,
     name        VARCHAR(100) NOT NULL,
-    room_bed    VARCHAR(50) NOT NULL,
+    room        VARCHAR(20) NOT NULL,
+    bed         VARCHAR(20) NOT NULL,
     age         INT,
     condition   VARCHAR(200),
     created_at  TIMESTAMP DEFAULT NOW(),
@@ -78,10 +79,10 @@ CREATE INDEX idx_reported_machines_esp32 ON reported_machines(esp32_id);
 -- ==========================================
 
 -- Thêm bệnh nhân
-INSERT INTO patients (id, name, room_bed, age, condition) VALUES
-    ('p1', 'Nguyễn Văn A', 'Phòng 101 - Giường 1', 45, 'Sốt xuất huyết'),
-    ('p2', 'Trần Thị B', 'Phòng 102 - Giường 3', 60, 'Tiêu chảy cấp'),
-    ('p3', 'Lê Văn C', 'Phòng 205 - Giường 2', 32, 'Mất nước');
+INSERT INTO patients (id, name, room, bed, age, condition) VALUES
+    ('p1', 'Nguyễn Văn A', '101', '1', 45, 'Sốt xuất huyết'),
+    ('p2', 'Trần Thị B', '102', '3', 60, 'Tiêu chảy cấp'),
+    ('p3', 'Lê Văn C', '205', '2', 32, 'Mất nước');
 
 -- Thêm bình truyền
 INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, start_time, status) VALUES
@@ -134,7 +135,8 @@ CREATE OR REPLACE VIEW v_bags_with_patients AS
 SELECT
     b.*,
     p.name as patient_name,
-    p.room_bed,
+    p.room as room,
+    p.bed as bed,
     p.condition
 FROM iv_bags b
 JOIN patients p ON b.patient_id = p.id

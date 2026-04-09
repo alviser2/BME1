@@ -3,13 +3,14 @@ import { useIVBag } from "../context/IVBagContext";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 
-interface AddBagModalProps {
+interface AssignPatientModalProps {
   isOpen: boolean;
   onClose: () => void;
+  esp32Id: string;
 }
 
-export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
-  const { patients, addPatient, addBag } = useIVBag();
+export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientModalProps) {
+  const { patients, addPatient, assignPatientToEsp32 } = useIVBag();
 
   const [selectedPatient, setSelectedPatient] = useState("new");
   const [patientName, setPatientName] = useState("");
@@ -24,23 +25,31 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     let pId = selectedPatient;
+
     if (pId === "new") {
       if (!patientName || !room || !bed) {
-        toast.error("Vui lòng nhập tên, phòng và giường cho bệnh nhân mới");
+        toast.error("Vui lòng nhập đầy đủ thông tin bệnh nhân");
         return;
       }
       pId = addPatient({ name: patientName, room, bed });
     }
 
-    addBag({
-      patientId: pId,
+    assignPatientToEsp32(esp32Id, pId, {
       type: bagType,
       initialVolume: Number(initialVolume),
-      currentVolume: Number(initialVolume),
       flowRate: Number(flowRate),
     });
 
+    toast.success(`Đã gán bệnh nhân cho thiết bị ${esp32Id}`);
     onClose();
+    // Reset form
+    setSelectedPatient("new");
+    setPatientName("");
+    setRoom("");
+    setBed("");
+    setBagType("Nước muối sinh lý 0.9%");
+    setInitialVolume("500");
+    setFlowRate("40");
   };
 
   return (
@@ -53,7 +62,8 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
           <X size={20} />
         </button>
 
-        <h2 className="text-xl font-bold text-gray-800 mb-6">Thêm Bình Truyền Mới</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Gán Bệnh Nhân</h2>
+        <p className="text-sm text-gray-500 mb-6">Thiết bị: <span className="font-mono font-medium">{esp32Id}</span></p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -64,8 +74,10 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="new">+ Thêm bệnh nhân mới</option>
-              {patients.map(p => (
-                <option key={p.id} value={p.id}>{p.name} - P{p.room} G{p.bed}</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} - P{p.room} G{p.bed}
+                </option>
               ))}
             </select>
           </div>
@@ -107,41 +119,45 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
             </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Loại Dịch</label>
-            <select
-              value={bagType}
-              onChange={(e) => setBagType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="Nước muối sinh lý 0.9%">Nước muối sinh lý 0.9%</option>
-              <option value="Glucose 5%">Glucose 5%</option>
-              <option value="Ringer Lactate">Ringer Lactate</option>
-              <option value="Amino Acid">Amino Acid</option>
-              <option value="Khác">Khác</option>
-            </select>
-          </div>
+          <div className="border-t pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-700 mb-3">Thông tin truyền dịch</p>
 
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Thể tích (ml)</label>
-              <input
-                type="number"
-                value={initialVolume}
-                onChange={(e) => setInitialVolume(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                min="50"
-              />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Loại Dịch</label>
+              <select
+                value={bagType}
+                onChange={(e) => setBagType(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="Nước muối sinh lý 0.9%">Nước muối sinh lý 0.9%</option>
+                <option value="Glucose 5%">Glucose 5%</option>
+                <option value="Ringer Lactate">Ringer Lactate</option>
+                <option value="Amino Acid">Amino Acid</option>
+                <option value="Khác">Khác</option>
+              </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tốc độ (giọt/phút)</label>
-              <input
-                type="number"
-                value={flowRate}
-                onChange={(e) => setFlowRate(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                min="10"
-              />
+
+            <div className="flex gap-4 mt-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Thể tích (ml)</label>
+                <input
+                  type="number"
+                  value={initialVolume}
+                  onChange={(e) => setInitialVolume(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  min="50"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tốc độ (giọt/phút)</label>
+                <input
+                  type="number"
+                  value={flowRate}
+                  onChange={(e) => setFlowRate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  min="10"
+                />
+              </div>
             </div>
           </div>
 
@@ -157,7 +173,7 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
               type="submit"
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors font-medium"
             >
-              Lưu & Bắt đầu
+              Gán Bệnh Nhân
             </button>
           </div>
         </form>
