@@ -33,6 +33,18 @@ export default async function handler(req, res) {
     }
 
     // ========== BAGS ==========
+    // POST phải check TRƯỚC GET vì cùng path
+    if (path === '/api/bags' && method === 'POST') {
+      const { patientId, esp32Id, type, initialVolume, currentVolume, flowRate } = req.body;
+      const id = `b${Date.now()}`;
+      await sql`
+        INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, status)
+        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume}, ${flowRate}, 'running')
+      `;
+      const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
+      return res.status(201).json(bag);
+    }
+    
     if (path === '/api/bags') {
       const bags = await sql`
         SELECT b.*, p.name as patient_name, p.room, p.bed, p.condition
@@ -52,17 +64,6 @@ export default async function handler(req, res) {
         ORDER BY b.updated_at DESC
       `;
       return res.json(bags);
-    }
-
-    if (path === '/api/bags' && method === 'POST') {
-      const { patientId, esp32Id, type, initialVolume, currentVolume, flowRate } = req.body;
-      const id = `b${Date.now()}`;
-      await sql`
-        INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, status)
-        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume}, ${flowRate}, 'running')
-      `;
-      const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
-      return res.status(201).json(bag);
     }
 
     // GET /api/bags/:id
