@@ -2,49 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDeltaSeconds": 10
-      }
+      "src": "api/index.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/esp32/register",
-      "dest": "/api/esp32/register.js"
+      "src": "/api/(.*)",
+      "dest": "/api/index.js"
     },
     {
-      "src": "/api/esp32/update",
-      "dest": "/api/esp32/update.js"
-    },
-    {
-      "src": "/api/esp32",
-      "dest": "/api/esp32/index.js"
-    },
-    {
-      "src": "/api/bags/all",
-      "dest": "/api/bags/all.js"
-    },
-    {
-      "src": "/api/bags",
-      "dest": "/api/bags/index.js"
-    },
-    {
-      "src": "/api/patients",
-      "dest": "/api/patients/index.js"
-    },
-    {
-      "src": "/api/machines/reported",
-      "dest": "/api/machines/index.js"
-    },
-    {
-      "src": "/api/machines/report",
-      "dest": "/api/machines/index.js"
-    },
-    {
-      "src": "/api/health",
-      "dest": "/api/health.js"
+      "src": "/health",
+      "dest": "/api/index.js"
     }
   ]
 }
