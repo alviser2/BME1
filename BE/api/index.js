@@ -33,12 +33,22 @@ export default async function handler(req, res) {
     }
 
     // ========== BAGS ==========
-    if (path === '/api/bags' || path === '/api/bags/all') {
+    if (path === '/api/bags') {
       const bags = await sql`
         SELECT b.*, p.name as patient_name, p.room, p.bed, p.condition
         FROM iv_bags b
         LEFT JOIN patients p ON b.patient_id = p.id
-        ${path === '/api/bags' ? sql`WHERE b.status != 'completed'` : sql``}
+        WHERE b.status != 'completed'
+        ORDER BY b.updated_at DESC
+      `;
+      return res.json(bags);
+    }
+    
+    if (path === '/api/bags/all') {
+      const bags = await sql`
+        SELECT b.*, p.name as patient_name, p.room, p.bed, p.condition
+        FROM iv_bags b
+        LEFT JOIN patients p ON b.patient_id = p.id
         ORDER BY b.updated_at DESC
       `;
       return res.json(bags);
