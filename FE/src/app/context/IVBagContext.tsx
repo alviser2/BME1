@@ -199,13 +199,13 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
 
   // ========== FETCH HISTORY FOR EACH BAG ==========
   useEffect(() => {
+    // Fetch history cho tất cả bags khi bags thay đổi
     bags.forEach((bag, index) => {
-      // Fetch history cho tất cả bags (kể cả completed) để hiển thị chart
       if (bag.historyLogs.length === 0) {
         fetchBagHistory(bag.id, index);
       }
     });
-  }, [bags.length]); // Chỉ trigger khi số lượng bags thay đổi
+  }, [bags, fetchBagHistory]);
 
   // ========== PAUSE KHI TAB ẨN ==========
   useEffect(() => {
