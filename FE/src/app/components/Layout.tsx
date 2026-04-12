@@ -1,6 +1,6 @@
 import React from "react";
 import { Outlet, NavLink, useNavigate } from "react-router";
-import { Activity, LayoutDashboard, History, Settings, Bell, Menu, X, Wrench, LogOut } from "lucide-react";
+import { Activity, LayoutDashboard, History, Settings, Bell, Menu, X, Wrench, LogOut, Users } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../lib/utils";
 import { useIVBag } from "../context/IVBagContext";
@@ -21,6 +21,7 @@ export function Layout() {
 
   const navItems = [
     { name: "Tổng quan", path: "/", icon: LayoutDashboard },
+    { name: "Bệnh nhân", path: "/patients", icon: Users },
     { name: "Lịch sử", path: "/history", icon: History },
     {
       name: "Bảo trì",

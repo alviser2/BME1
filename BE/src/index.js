@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import routes from './routes/index.js';
-import './db/postgres.js';
+import './db/mysql.js';
 
 dotenv.config();
 

@@ -20,7 +20,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
   const isRunning = bag.status === "running";
   const isEmpty = bag.status === "empty";
   const isCompleted = bag.status === "completed";
-  const hasAnomaly = bag.anomaly === "FAST_DRAIN" || bag.anomaly === "FAST_DRAIN_WARNING";
+  const hasAnomaly = bag.anomaly === "FAST_DRAIN";
 
   const timeRemainingMinutes = calculateTimeRemainingInMinutes(bag.currentVolume, bag.flowRate);
   const percentRemaining = Math.max(0, Math.min(100, (bag.currentVolume / bag.initialVolume) * 100));
@@ -51,7 +51,6 @@ export function BagCard({ bag, patient }: BagCardProps) {
       className={cn(
         "bg-white rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all hover:shadow-md cursor-pointer group",
         hasAnomaly && bag.anomaly === "FAST_DRAIN" && "border-red-400 ring-2 ring-red-200",
-        hasAnomaly && bag.anomaly === "FAST_DRAIN_WARNING" && "border-yellow-400 ring-2 ring-yellow-200",
         !hasAnomaly && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
         !hasAnomaly && isEmpty && "border-red-300 ring-1 ring-red-300",
         !hasAnomaly && !isWarning && !isEmpty && "border-gray-100"
@@ -60,9 +59,6 @@ export function BagCard({ bag, patient }: BagCardProps) {
       {/* Background Pulse for Warning / Anomaly */}
       {hasAnomaly && bag.anomaly === "FAST_DRAIN" && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-red-500 animate-pulse" />
-      )}
-      {hasAnomaly && bag.anomaly === "FAST_DRAIN_WARNING" && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-yellow-400 animate-pulse" />
       )}
       {!hasAnomaly && isWarning && isRunning && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-orange-400 animate-pulse" />
@@ -80,7 +76,7 @@ export function BagCard({ bag, patient }: BagCardProps) {
           <div>
             <h3 className="font-semibold text-gray-800 flex items-center gap-2">
               {patient.name}
-              {hasAnomaly && <AlertCircle size={16} className={bag.anomaly === "FAST_DRAIN" ? "text-red-500" : "text-yellow-500"} />}
+              {hasAnomaly && <AlertCircle size={16} className="text-red-500" />}
               {!hasAnomaly && isWarning && <AlertCircle size={16} className="text-orange-500" />}
               <button
                 onClick={(e) => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useIVBag } from "../context/IVBagContext";
 import { X } from "lucide-react";
+import { toast } from "sonner";
 import { Patient, IVBag } from "../types";
 
 interface EditPatientModalProps {
@@ -35,25 +36,30 @@ export function EditPatientModal({ isOpen, onClose, patient, bag }: EditPatientM
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    updatePatient(patient.id, {
-      name,
-      room,
-      bed,
-      age: age ? parseInt(age, 10) : undefined,
-      condition: condition || undefined
-    });
-
-    if (bag) {
-      updateBag(bag.id, {
-        type: bagType,
-        esp32Id: esp32Id || undefined
+    try {
+      await updatePatient(patient.id, {
+        name,
+        room,
+        bed,
+        age: age ? parseInt(age, 10) : undefined,
+        condition: condition || undefined
       });
-    }
 
-    onClose();
+      if (bag) {
+        await updateBag(bag.id, {
+          type: bagType,
+          esp32Id: esp32Id || undefined
+        });
+      }
+
+      toast.success("Đã cập nhật thông tin bệnh nhân");
+      onClose();
+    } catch (err) {
+      toast.error("Không thể cập nhật. Vui lòng thử lại.");
+    }
   };
 
   return (

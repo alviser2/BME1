@@ -15,6 +15,7 @@ export interface Esp32Device {
   bagId?: string;
   registeredAt: number;
   maintenance?: boolean; // true = đang bảo trì, không hiện ở dashboard
+  status?: "online" | "offline"; // trạng thái kết nối từ backend
 }
 
 export interface DataPoint {
@@ -42,6 +43,6 @@ export interface IVBag {
   status: BagStatus;
   emptyTimestamp?: number;
   historyLogs: DataPoint[]; // Points for chart
-  anomaly?: "FAST_DRAIN" | "FAST_DRAIN_WARNING"; // FAST_DRAIN = đỏ (>5x), FAST_DRAIN_WARNING = vàng (3x-5x)
+  anomaly?: "FAST_DRAIN"; // FAST_DRAIN = đỏ (>5x flow rate)
   stopReason?: "NORMAL" | "ERROR"; // Reason for stopping
 }

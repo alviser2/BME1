@@ -1,6 +1,6 @@
-import { pool } from '../db/postgres.js';
+import { pool } from '../db/mysql.js';
 
-// ========== BAG MODEL ==========
+// ========== BAG MODEL (MySQL) ==========
 export const bagModel = {
   // Lấy tất cả bags kèm thông tin patient
   async findAllWithPatient() {
@@ -10,7 +10,8 @@ export const bagModel = {
       JOIN patients p ON b.patient_id = p.id
       ORDER BY b.start_time DESC
     `;
-    return (await pool.query(query)).rows;
+    const [rows] = await pool.query(query);
+    return rows;
   },
 
   // Lấy bags đang active (không completed)
@@ -22,65 +23,66 @@ export const bagModel = {
       WHERE b.status != 'completed'
       ORDER BY b.start_time DESC
     `;
-    return (await pool.query(query)).rows;
+    const [rows] = await pool.query(query);
+    return rows;
   },
 
   // Lấy bags theo patient ID
   async findByPatientId(patientId) {
-    const query = `
-      SELECT * FROM iv_bags WHERE patient_id = $1
-      ORDER BY start_time DESC
-    `;
-    return (await pool.query(query, [patientId])).rows;
+    const query = `SELECT * FROM iv_bags WHERE patient_id = ? ORDER BY start_time DESC`;
+    const [rows] = await pool.query(query, [patientId]);
+    return rows;
   },
 
   // Lấy bag theo ID
   async findById(id) {
-    const query = `SELECT * FROM iv_bags WHERE id = $1`;
-    return (await pool.query(query, [id])).rows[0];
+    const query = `SELECT * FROM iv_bags WHERE id = ?`;
+    const [rows] = await pool.query(query, [id]);
+    return rows[0];
   },
 
   // Tạo bag mới
   async create({ patientId, esp32Id, type, initialVolume, flowRate }) {
     const id = `b${Date.now()}`;
-    const startTime = new Date().toISOString();
+    const startTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const query = `
       INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, start_time, status)
-      VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 'running')
-      RETURNING *
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running')
     `;
-    return (await pool.query(query, [id, patientId, esp32Id || null, type, initialVolume, flowRate, startTime])).rows[0];
+    await pool.query(query, [id, patientId, esp32Id || null, type, initialVolume, initialVolume, flowRate, startTime]);
+    return this.findById(id);
   },
 
   // Cập nhật bag
   async update(id, { type, esp32Id, flowRate, status, currentVolume, emptyTimestamp }) {
     const fields = [];
     const values = [];
-    let idx = 1;
 
-    if (type !== undefined) { fields.push(`type = $${idx++}`); values.push(type); }
-    if (esp32Id !== undefined) { fields.push(`esp32_id = $${idx++}`); values.push(esp32Id || null); }
-    if (flowRate !== undefined) { fields.push(`flow_rate = $${idx++}`); values.push(flowRate); }
-    if (status !== undefined) { fields.push(`status = $${idx++}`); values.push(status); }
-    if (currentVolume !== undefined) { fields.push(`current_volume = $${idx++}`); values.push(currentVolume); }
-    if (emptyTimestamp !== undefined) { fields.push(`empty_timestamp = $${idx++}`); values.push(emptyTimestamp || null); }
+    if (type !== undefined) { fields.push('type = ?'); values.push(type); }
+    if (esp32Id !== undefined) { fields.push('esp32_id = ?'); values.push(esp32Id || null); }
+    if (flowRate !== undefined) { fields.push('flow_rate = ?'); values.push(flowRate); }
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (currentVolume !== undefined) { fields.push('current_volume = ?'); values.push(currentVolume); }
+    if (emptyTimestamp !== undefined) { fields.push('empty_timestamp = ?'); values.push(emptyTimestamp || null); }
 
-    fields.push(`updated_at = NOW()`);
+    fields.push('updated_at = NOW()');
     values.push(id);
 
-    const query = `UPDATE iv_bags SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`;
-    return (await pool.query(query, values)).rows[0];
+    const query = `UPDATE iv_bags SET ${fields.join(', ')} WHERE id = ?`;
+    await pool.query(query, values);
+    return this.findById(id);
   },
 
   // Xóa bag
   async delete(id) {
-    const query = `DELETE FROM iv_bags WHERE id = $1 RETURNING *`;
-    return (await pool.query(query, [id])).rows[0];
+    const query = `DELETE FROM iv_bags WHERE id = ?`;
+    const [result] = await pool.query(query, [id]);
+    return result.affectedRows > 0 ? { id } : null;
   },
 
   // Cập nhật từ ESP32 (volume + flowRate) + kiểm tra bất thường
   async updateFromESP32(esp32Id, { volume, flowRate }) {
-    const now = new Date().toISOString();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     let status = 'running';
     let emptyTimestamp = null;
 
@@ -112,28 +114,31 @@ export const bagModel = {
 
     const query = `
       UPDATE iv_bags
-      SET current_volume = $2,
-          flow_rate = $3,
-          status = $4,
-          empty_timestamp = $5,
-          updated_at = $6
-      WHERE esp32_id = $1 AND status IN ('running', 'empty')
-      RETURNING *
+      SET current_volume = ?,
+          flow_rate = ?,
+          status = ?,
+          empty_timestamp = ?,
+          updated_at = ?
+      WHERE esp32_id = ? AND status IN ('running', 'empty')
     `;
-    const result = await pool.query(query, [esp32Id, Math.max(0, volume), flowRate, status, emptyTimestamp, now]);
+    await pool.query(query, [Math.max(0, volume), flowRate, status, emptyTimestamp, now, esp32Id]);
+
+    // Lấy kết quả sau update
+    const updatedBag = await this.findByEsp32Id(esp32Id);
 
     // Ghi log (5s一次)
-    if (result.rows[0]) {
-      await this.insertLog(result.rows[0].id, { volume: Math.max(0, volume), flowRate });
+    if (updatedBag) {
+      await this.insertLog(updatedBag.id, { volume: Math.max(0, volume), flowRate });
     }
 
-    return result.rows[0] ? { bag: result.rows[0], anomaly } : null;
+    return updatedBag ? { bag: updatedBag, anomaly } : null;
   },
 
   // Lấy bag theo ESP32 ID
   async findByEsp32Id(esp32Id) {
-    const query = `SELECT * FROM iv_bags WHERE esp32_id = $1 AND status != 'completed' LIMIT 1`;
-    return (await pool.query(query, [esp32Id])).rows[0];
+    const query = `SELECT * FROM iv_bags WHERE esp32_id = ? AND status != 'completed' LIMIT 1`;
+    const [rows] = await pool.query(query, [esp32Id]);
+    return rows[0];
   },
 
   // Lấy history logs cho chart (limit để tránh quá nặng)
@@ -141,11 +146,12 @@ export const bagModel = {
     const query = `
       SELECT time, volume, flow_rate
       FROM bag_logs
-      WHERE bag_id = $1
+      WHERE bag_id = ?
       ORDER BY time ASC
-      LIMIT $2
+      LIMIT ?
     `;
-    return (await pool.query(query, [bagId, limit])).rows;
+    const [rows] = await pool.query(query, [bagId, limit]);
+    return rows;
   },
 
   // Export data (volume + flowRate) cho analysis
@@ -153,31 +159,32 @@ export const bagModel = {
     let query = `
       SELECT time, volume, flow_rate
       FROM bag_logs
-      WHERE bag_id = $1
+      WHERE bag_id = ?
     `;
     const params = [bagId];
 
     if (startTime) {
       params.push(startTime);
-      query += ` AND time >= $${params.length}`;
+      query += ` AND time >= ?`;
     }
     if (endTime) {
       params.push(endTime);
-      query += ` AND time <= $${params.length}`;
+      query += ` AND time <= ?`;
     }
 
     query += ` ORDER BY time ASC`;
-    return (await pool.query(query, params)).rows;
+    const [rows] = await pool.query(query, params);
+    return rows;
   },
 
   // Ghi log mới
   async insertLog(bagId, { volume, flowRate }) {
-    const now = new Date().toISOString();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const query = `
       INSERT INTO bag_logs (bag_id, time, volume, flow_rate)
-      VALUES ($1, $2, $3, $4)
+      VALUES (?, ?, ?, ?)
     `;
-    return (await pool.query(query, [bagId, now, volume, flowRate]));
+    return await pool.query(query, [bagId, now, volume, flowRate]);
   },
 
   // Auto complete bag (empty -> completed sau 3 phút)
@@ -187,10 +194,10 @@ export const bagModel = {
       SET status = 'completed', updated_at = NOW()
       WHERE status = 'empty'
         AND empty_timestamp IS NOT NULL
-        AND (NOW() - empty_timestamp) > INTERVAL '3 minutes'
-      RETURNING *
+        AND TIMESTAMPDIFF(MINUTE, empty_timestamp, NOW()) >= 3
     `;
-    return (await pool.query(query)).rows;
+    const [result] = await pool.query(query);
+    return result.affectedRows;
   },
 
   // Kiểm tra tất cả bags cho bất thường (chạy mỗi 5s)
@@ -201,7 +208,7 @@ export const bagModel = {
       JOIN patients p ON b.patient_id = p.id
       WHERE b.status = 'running' AND b.esp32_id IS NOT NULL
     `;
-    const bags = (await pool.query(query)).rows;
+    const [bags] = await pool.query(query);
     const anomalies = [];
 
     for (const bag of bags) {
@@ -213,16 +220,16 @@ export const bagModel = {
       // Lấy log gần nhất trước đó để so sánh
       const lastLogQuery = `
         SELECT volume FROM bag_logs
-        WHERE bag_id = $1
+        WHERE bag_id = ?
         ORDER BY time DESC
         LIMIT 2
       `;
-      const lastLogs = (await pool.query(lastLogQuery, [bag.id])).rows;
+      const [lastLogs] = await pool.query(lastLogQuery, [bag.id]);
 
       if (lastLogs.length >= 2) {
         const actualReduction = lastLogs[1].volume - bag.current_volume;
 
-        // Ngưỡng bất thường: giảm gấp 3 lần hoặc giảm >50ml trong khi expected <20ml
+        // Ngưỡng bất thường: giảm gấp 3 lần hoặc giảm >30ml trong khi expected <20ml
         if (actualReduction > expectedReductionPerCheck * 3 && actualReduction > 30) {
           anomalies.push({
             bagId: bag.id,

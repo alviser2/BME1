@@ -22,8 +22,7 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
   const isEmpty = bag?.status === "empty";
   const isCompleted = bag?.status === "completed";
   const isAnomalyCritical = bag?.anomaly === "FAST_DRAIN";
-  const isAnomalyWarning = bag?.anomaly === "FAST_DRAIN_WARNING";
-  const hasAnomaly = isAnomalyCritical || isAnomalyWarning;
+  const hasAnomaly = isAnomalyCritical;
 
   const timeRemainingMinutes = bag ? calculateTimeRemainingInMinutes(bag.currentVolume, bag.flowRate) : 0;
   const percentRemaining = bag ? Math.max(0, Math.min(100, (bag.currentVolume / bag.initialVolume) * 100)) : 0;
@@ -64,7 +63,6 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
           "bg-white rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all hover:shadow-md cursor-pointer group",
           !hasPatient && "border-dashed border-gray-300 bg-gray-50/50",
           hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN" && "border-red-400 ring-2 ring-red-200",
-          hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN_WARNING" && "border-yellow-400 ring-2 ring-yellow-200",
           hasPatient && !hasAnomaly && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
           hasPatient && !hasAnomaly && isEmpty && "border-red-300 ring-1 ring-red-300",
           hasPatient && !hasAnomaly && !isWarning && !isEmpty && "border-gray-100"
@@ -74,7 +72,6 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
         <div className="absolute top-0 left-0 right-0 h-1 flex">
           {!hasPatient && <div className="flex-1 bg-gray-300" />}
           {hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN" && <div className="flex-1 bg-red-500 animate-pulse" />}
-          {hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN_WARNING" && <div className="flex-1 bg-yellow-400 animate-pulse" />}
           {hasPatient && !hasAnomaly && isRunning && <div className="flex-1 bg-green-500 animate-pulse" />}
           {hasPatient && !hasAnomaly && isEmpty && <div className="flex-1 bg-red-500 animate-pulse" />}
           {hasPatient && !hasAnomaly && isWarning && <div className="flex-1 bg-orange-400 animate-pulse" />}
@@ -94,7 +91,6 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
               <h3 className="font-semibold text-gray-800 flex items-center gap-2">
                 {device.id}
                 {isAnomalyCritical && <AlertCircle size={16} className="text-red-500" />}
-                {isAnomalyWarning && <AlertCircle size={16} className="text-yellow-500" />}
                 {!hasAnomaly && isWarning && <AlertCircle size={16} className="text-orange-500" />}
               </h3>
               {hasPatient && patient && (

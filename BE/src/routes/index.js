@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { bagController } from '../controllers/bagController.js';
 import { patientController } from '../controllers/patientController.js';
 import { machineController } from '../controllers/machineController.js';
+import { esp32Controller } from '../controllers/esp32Controller.js';
 
 const router = Router();
 
@@ -17,8 +18,11 @@ router.put('/bags/:id', bagController.update);
 router.put('/bags/:id/status', bagController.updateStatus);
 router.delete('/bags/:id', bagController.delete);
 
-// ========== ESP32 WEBHOOK (5s一次) ==========
-router.post('/esp32/update', bagController.esp32Update);
+// ========== ESP32 DEVICES ==========
+router.get('/esp32', esp32Controller.getAll);
+router.get('/esp32/:id', esp32Controller.getById);
+router.post('/esp32/register', esp32Controller.register);
+router.post('/esp32/update', esp32Controller.update); // ESP32 webhook (5s一次)
 
 // ========== ANOMALY CHECK ==========
 router.get('/bags/anomalies', bagController.checkAnomalies);

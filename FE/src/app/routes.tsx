@@ -5,6 +5,7 @@ import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { History } from "./pages/History";
 import { PatientDetails } from "./pages/PatientDetails";
+import { Patients } from "./pages/Patients";
 import { Reports } from "./pages/Reports";
 
 // Protected Route wrapper
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: "history", Component: History },
+      { path: "patients", Component: Patients },
       { path: "reports", Component: Reports },
       { path: "patient/:id", Component: PatientDetails },
       {

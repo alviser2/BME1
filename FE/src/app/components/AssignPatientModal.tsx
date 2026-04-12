@@ -24,7 +24,7 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     let pId = selectedPatient;
 
@@ -33,22 +33,31 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
         toast.error("Vui lòng nhập đầy đủ thông tin bệnh nhân");
         return;
       }
-      pId = addPatient({
-        name: patientName,
-        room,
-        bed,
-        age: age ? parseInt(age, 10) : undefined,
-        condition: condition || undefined
-      });
+      try {
+        pId = await addPatient({
+          name: patientName,
+          room,
+          bed,
+          age: age ? parseInt(age, 10) : undefined,
+          condition: condition || undefined
+        });
+      } catch (err) {
+        toast.error("Không thể tạo bệnh nhân. Vui lòng thử lại!");
+        return;
+      }
     }
 
-    assignPatientToEsp32(esp32Id, pId, {
-      type: bagType,
-      initialVolume: Number(initialVolume),
-      flowRate: Number(flowRate),
-    });
-
-    toast.success(`Đã gán bệnh nhân cho thiết bị ${esp32Id}`);
+    try {
+      await assignPatientToEsp32(esp32Id, pId, {
+        type: bagType,
+        initialVolume: Number(initialVolume),
+        flowRate: Number(flowRate),
+      });
+      toast.success(`Đã gán bệnh nhân cho thiết bị ${esp32Id}`);
+    } catch (err) {
+      toast.error("Không thể gán bệnh nhân. Vui lòng thử lại!");
+      return;
+    }
     onClose();
     // Reset form
     setSelectedPatient("new");

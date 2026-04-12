@@ -3,119 +3,206 @@ import { Patient, IVBag, BagStatus, DataPoint, ReportedMachine, Esp32Device } fr
 import { dropsToMlPerSec } from "../lib/utils";
 
 // ========== CONSTANTS ==========
+const API_BASE = "http://localhost:3001/api";
 const MAX_HISTORY_ENTRIES = 1000; // Giới hạn log để tránh memory leak
 const LOG_INTERVAL_MS = 5000;     // 5 giây - tần suất ghi log
-const AUTO_COMPLETE_MS = 180000;  // 3 phút - tự động complete sau khi empty
-const TICK_INTERVAL_MS = 1000;     // 1 giây - interval tick
+const AUTO_COMPLETE_MS = 180000; // 3 phút - tự động complete sau khi empty
+const TICK_INTERVAL_MS = 1000;   // 1 giây - interval tick
+const POLL_MS = 5000;            // 5 giây - poll data từ backend
 
 interface IVBagContextType {
   patients: Patient[];
   bags: IVBag[];
   esp32Devices: Esp32Device[];
-  addPatient: (patient: Omit<Patient, "id">) => string;
-  updatePatient: (id: string, updates: Partial<Patient>) => void;
-  addBag: (bag: Omit<IVBag, "id" | "startTime" | "status" | "historyLogs">) => string;
-  updateBag: (id: string, updates: Partial<IVBag>) => void;
-  deleteBag: (id: string) => void;
-  changeBagStatus: (id: string, status: BagStatus) => void;
-  completeBagManually: (id: string) => void;
-  updateFromESP32: (esp32Id: string, data: { roomBed: string; remainingVolume: number; dropsPerSecond: number }) => void;
   reportedMachines: ReportedMachine[];
-  reportMachine: (esp32Id: string, roomBed: string) => void;
-  resolveMachine: (esp32Id: string) => void;
-  addEsp32: (esp32Id: string) => string;
-  assignPatientToEsp32: (esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => string;
-  releaseEsp32: (esp32Id: string) => void;
-  moveToMaintenance: (esp32Id: string) => void;
-  resolveMaintenance: (esp32Id: string) => void;
-  removeEsp32: (esp32Id: string) => void;
+  isLoading: boolean;
+  isConnected: boolean;
+  // Patient CRUD
+  addPatient: (patient: Omit<Patient, "id">) => Promise<string>;
+  updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
+  deletePatient: (id: string) => Promise<void>;
+  // Bag CRUD
+  addBag: (bag: Omit<IVBag, "id" | "startTime" | "status" | "historyLogs">) => Promise<string>;
+  updateBag: (id: string, updates: Partial<IVBag>) => Promise<void>;
+  deleteBag: (id: string) => Promise<void>;
+  changeBagStatus: (id: string, status: BagStatus) => Promise<void>;
+  completeBagManually: (id: string, stopReason?: "NORMAL" | "ERROR") => Promise<void>;
+  // ESP32
+  addEsp32: (esp32Id: string) => Promise<string>;
+  assignPatientToEsp32: (esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => Promise<string>;
+  releaseEsp32: (esp32Id: string) => Promise<void>;
+  moveToMaintenance: (esp32Id: string) => Promise<void>;
+  resolveMaintenance: (esp32Id: string) => Promise<void>;
+  removeEsp32: (esp32Id: string) => Promise<void>;
+  // Machine reports
+  reportMachine: (esp32Id: string, roomBed: string) => Promise<void>;
+  resolveMachine: (esp32Id: string) => Promise<void>;
+  // Manual refresh
+  refreshData: () => Promise<void>;
 }
-
-const mockPatients: Patient[] = [
-  { id: "p1", name: "Nguyễn Văn A", room: "101", bed: "1", age: 45, condition: "Sốt xuất huyết" },
-  { id: "p2", name: "Trần Thị B", room: "102", bed: "3", age: 60, condition: "Tiêu chảy cấp" },
-  { id: "p3", name: "Lê Văn C", room: "205", bed: "2", age: 32, condition: "Mất nước" },
-];
-
-// Sinh dữ liệu lịch sử giả định cho 1 bình đang truyền (bắt đầu cách đây 1 giờ)
-const generateMockHistory = (initialVol: number, flowRate: number, startTime: number): DataPoint[] => {
-  const points: DataPoint[] = [];
-  const interval = LOG_INTERVAL_MS; // dùng constant thay vì magic number
-
-  let vol = initialVol;
-  for (let t = startTime; t <= Date.now(); t += interval) {
-    points.push({ time: t, volume: Math.max(0, vol), flowRate: flowRate + (Math.random() * 2 - 1) });
-    vol -= (flowRate / 20) * 5;
-  }
-  return points;
-};
-
-const startTimeP1 = Date.now() - 3600 * 1000;
-
-const mockBags: IVBag[] = [
-  {
-    id: "b1",
-    patientId: "p1",
-    esp32Id: "ESP32_001",
-    type: "Nước muối sinh lý 0.9%",
-    initialVolume: 500,
-    currentVolume: 150,
-    flowRate: 40,
-    startTime: startTimeP1,
-    status: "running",
-    anomaly: "FAST_DRAIN_WARNING", // TEST: đổi thành "FAST_DRAIN_WARNING" để test warning
-    historyLogs: generateMockHistory(500, 40, startTimeP1),
-  },
-  {
-    id: "b2",
-    patientId: "p2",
-    esp32Id: "ESP32_002",
-    type: "Glucose 5%",
-    initialVolume: 1000,
-    currentVolume: 900,
-    flowRate: 60,
-    startTime: Date.now() - 15 * 60 * 1000,
-    status: "running",
-    anomaly: "FAST_DRAIN", // TEST: đổi thành "FAST_DRAIN" để test đỏ
-    historyLogs: generateMockHistory(1000, 60, Date.now() - 15 * 60 * 1000),
-  },
-  {
-    id: "b3",
-    patientId: "p3",
-    type: "Ringer Lactate",
-    initialVolume: 500,
-    currentVolume: 0,
-    flowRate: 30,
-    startTime: Date.now() - 4 * 3600 * 1000,
-    status: "completed",
-    emptyTimestamp: Date.now() - 10 * 60 * 1000,
-    historyLogs: generateMockHistory(500, 30, Date.now() - 4 * 3600 * 1000),
-  },
-];
-
-// Mock ESP32 devices: 1 đã gắn bệnh nhân, 2 đang chờ
-const mockEsp32Devices: Esp32Device[] = [
-  { id: "ESP32_001", patientId: "p1", bagId: "b1", registeredAt: Date.now() - 3600 * 1000 },
-  { id: "ESP32_002", patientId: "p2", bagId: "b2", registeredAt: Date.now() - 15 * 60 * 1000 },
-  { id: "ESP32_003", registeredAt: Date.now() },
-  { id: "ESP32_004", registeredAt: Date.now() },
-];
 
 const IVBagContext = createContext<IVBagContextType | undefined>(undefined);
 
 // ========== HELPER: Giới hạn log entries ==========
 const trimHistoryLogs = (logs: DataPoint[]): DataPoint[] => {
   if (logs.length <= MAX_HISTORY_ENTRIES) return logs;
-  // Giữ last N entries (sliding window)
   return logs.slice(-MAX_HISTORY_ENTRIES);
 };
 
+// ========== TYPE MAPPING: Backend → Frontend ==========
+const mapBagFromBackend = (b: any): IVBag => ({
+  id: b.id,
+  patientId: b.patient_id,
+  esp32Id: b.esp32_id,
+  type: b.type,
+  initialVolume: parseFloat(b.initial_volume),
+  currentVolume: parseFloat(b.current_volume),
+  flowRate: parseFloat(b.flow_rate) || 0,
+  startTime: b.start_time ? new Date(b.start_time).getTime() : Date.now(),
+  status: b.status,
+  emptyTimestamp: b.empty_timestamp ? new Date(b.empty_timestamp).getTime() : undefined,
+  anomaly: b.anomaly,
+  historyLogs: [],
+});
+
+const mapPatientFromBackend = (p: any): Patient => ({
+  id: p.id,
+  name: p.name,
+  room: p.room,
+  bed: p.bed,
+  age: p.age,
+  condition: p.condition,
+});
+
+const mapEsp32FromBackend = (d: any): Esp32Device => ({
+  id: d.id,
+  patientId: undefined,
+  bagId: undefined,
+  registeredAt: d.registered_at ? new Date(d.registered_at).getTime() : Date.now(),
+  status: d.status,
+});
+
+const mapMachineFromBackend = (m: any): ReportedMachine => ({
+  id: m.id,
+  esp32Id: m.esp32_id,
+  roomBed: m.room_bed,
+  status: m.status,
+  reportedAt: m.reported_at ? new Date(m.reported_at).getTime() : Date.now(),
+  resolvedAt: m.resolved_at ? new Date(m.resolved_at).getTime() : undefined,
+});
+
 export function IVBagProvider({ children }: { children: ReactNode }) {
-  const [patients, setPatients] = useState<Patient[]>(mockPatients);
-  const [bags, setBags] = useState<IVBag[]>(mockBags);
-  const [esp32Devices, setEsp32Devices] = useState<Esp32Device[]>(mockEsp32Devices);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [bags, setBags] = useState<IVBag[]>([]);
+  const [esp32Devices, setEsp32Devices] = useState<Esp32Device[]>([]);
   const [reportedMachines, setReportedMachines] = useState<ReportedMachine[]>([]);
-  const isActiveRef = useRef(true); // Ref để track visibility
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const isActiveRef = useRef(true);
+
+  // ========== FETCH DATA FROM BACKEND ==========
+  const fetchAllData = useCallback(async () => {
+    try {
+      const [bagsRes, patientsRes, esp32Res, machinesRes] = await Promise.all([
+        fetch(`${API_BASE}/bags/all`),
+        fetch(`${API_BASE}/patients`),
+        fetch(`${API_BASE}/esp32`),
+        fetch(`${API_BASE}/machines/reported`),
+      ]);
+
+      if (!bagsRes.ok || !patientsRes.ok || !esp32Res.ok || !machinesRes.ok) {
+        throw new Error("API error");
+      }
+
+      const [bagsData, patientsData, esp32Data, machinesData] = await Promise.all([
+        bagsRes.json(),
+        patientsRes.json(),
+        esp32Res.json(),
+        machinesRes.json(),
+      ]);
+
+      const mappedBags: IVBag[] = Array.isArray(bagsData) ? bagsData.map(mapBagFromBackend) : [];
+      const mappedPatients: Patient[] = Array.isArray(patientsData) ? patientsData.map(mapPatientFromBackend) : [];
+      const mappedMachines: ReportedMachine[] = Array.isArray(machinesData) ? machinesData.map(mapMachineFromBackend) : [];
+
+      // Build esp32Devices with patientId và bagId từ bags
+      // Vì esp32_devices table không có patient_id/bag_id, ta lấy từ bảng bags
+      const mappedEsp32Devices: Esp32Device[] = Array.isArray(esp32Data) 
+        ? esp32Data.map((d: any) => {
+            // Tìm bag đang chạy của ESP32 này
+            const activeBag = mappedBags.find((b) => b.esp32Id === d.id && b.status !== "completed");
+            return {
+              id: d.id,
+              patientId: activeBag?.patientId,
+              bagId: activeBag?.id,
+              registeredAt: d.registered_at ? new Date(d.registered_at).getTime() : Date.now(),
+              status: d.status,
+            };
+          })
+        : [];
+
+      setBags(mappedBags);
+      setPatients(mappedPatients);
+      setEsp32Devices(mappedEsp32Devices);
+      setReportedMachines(mappedMachines);
+      setIsConnected(true);
+    } catch (err) {
+      console.error("Failed to fetch data:", err);
+      setIsConnected(false);
+    }
+  }, []);
+
+  // ========== FETCH BAG HISTORY ==========
+  const fetchBagHistory = useCallback(async (bagId: string, bagIndex: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/bags/${bagId}/history`);
+      if (!res.ok) return;
+      const history: any[] = await res.json();
+      
+      const mappedHistory = history.map((h) => ({
+        time: new Date(h.time).getTime(),
+        volume: parseFloat(h.volume),
+        flowRate: parseFloat(h.flow_rate) || 0,
+      }));
+
+      setBags((prev) => {
+        const updated = [...prev];
+        if (updated[bagIndex]) {
+          updated[bagIndex] = { ...updated[bagIndex], historyLogs: mappedHistory };
+        }
+        return updated;
+      });
+    } catch (err) {
+      console.error("Failed to fetch bag history:", err);
+    }
+  }, []);
+
+  // ========== INITIAL LOAD + POLL ==========
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      await fetchAllData();
+      setIsLoading(false);
+    };
+    loadData();
+
+    const pollTimer = setInterval(async () => {
+      if (!document.hidden) {
+        await fetchAllData();
+      }
+    }, POLL_MS);
+
+    return () => clearInterval(pollTimer);
+  }, [fetchAllData]);
+
+  // ========== FETCH HISTORY FOR EACH BAG ==========
+  useEffect(() => {
+    bags.forEach((bag, index) => {
+      if (bag.historyLogs.length === 0 && bag.status !== "completed") {
+        fetchBagHistory(bag.id, index);
+      }
+    });
+  }, [bags, fetchBagHistory]);
 
   // ========== PAUSE KHI TAB ẨN ==========
   useEffect(() => {
@@ -126,58 +213,35 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  // ========== TICK INTERVAL ==========
+  // ========== TICK INTERVAL (chỉ cho bags không có ESP32) ==========
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!isActiveRef.current) return; // Skip tick nếu tab đang ẩn
+      if (!isActiveRef.current) return;
 
       const now = Date.now();
 
       setBags((prev) => {
         let changed = false;
         const updatedBags = prev.map((bag) => {
-          if (bag.status === "running") {
+          // Chỉ tick bags KHÔNG có ESP32 (bags có ESP32 sẽ được cập nhật từ backend)
+          if (bag.status === "running" && !bag.esp32Id) {
             changed = true;
-            let newVol = bag.currentVolume;
-            let newFlowRate = bag.flowRate;
+            const mlReduced = dropsToMlPerSec(bag.flowRate);
+            const newVol = Math.max(0, bag.currentVolume - mlReduced);
 
-            if (bag.esp32Id) {
-              const currentDropsPerSec = bag.flowRate / 60;
-              const newDropsPerSec = Math.max(0, currentDropsPerSec + (Math.random() * 0.2 - 0.1));
-              newFlowRate = newDropsPerSec * 60;
-              const mlReduced = dropsToMlPerSec(newFlowRate);
-              newVol = Math.max(0, bag.currentVolume - mlReduced);
-            } else {
-              const mlReduced = dropsToMlPerSec(bag.flowRate);
-              newVol = Math.max(0, bag.currentVolume - mlReduced);
-            }
-
-            // Record log theo interval
             let updatedLogs = bag.historyLogs;
             const lastLog = updatedLogs.length > 0 ? updatedLogs[updatedLogs.length - 1] : null;
             if (!lastLog || now - lastLog.time >= LOG_INTERVAL_MS) {
-              updatedLogs = trimHistoryLogs([...updatedLogs, { time: now, volume: newVol, flowRate: newFlowRate }]);
-            }
-
-            // Anomaly detection: FAST_DRAIN if flow rate > 5x expected, WARNING if > 3x
-            // Chỉ SET anomaly, không tự xóa - giữ nguyên cho đến khi user tạm dừng
-            let anomaly = bag.anomaly;
-            if (!anomaly && bag.esp32Id && lastLog) {
-              if (newFlowRate > bag.flowRate * 5) {
-                anomaly = "FAST_DRAIN";
-              } else if (newFlowRate > bag.flowRate * 3) {
-                anomaly = "FAST_DRAIN_WARNING";
-              }
+              updatedLogs = trimHistoryLogs([...updatedLogs, { time: now, volume: newVol, flowRate: bag.flowRate }]);
             }
 
             if (newVol <= 0) {
-              return { ...bag, currentVolume: 0, status: "empty", emptyTimestamp: now, historyLogs: updatedLogs, flowRate: newFlowRate, anomaly };
+              return { ...bag, currentVolume: 0, status: "empty", emptyTimestamp: now, historyLogs: updatedLogs };
             }
-            return { ...bag, currentVolume: newVol, historyLogs: updatedLogs, flowRate: newFlowRate, anomaly };
+            return { ...bag, currentVolume: newVol, historyLogs: updatedLogs };
           }
 
           if (bag.status === "empty" && bag.emptyTimestamp) {
-            // Auto complete sau 3 phút
             if (now - bag.emptyTimestamp >= AUTO_COMPLETE_MS) {
               changed = true;
               return { ...bag, status: "completed" };
@@ -194,167 +258,169 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, []);
 
-  // ========== CALLBACKS ==========
-  const reportMachine = useCallback((esp32Id: string, roomBed: string) => {
-    setReportedMachines((prev) => {
-      if (prev.find((m) => m.esp32Id === esp32Id && m.status === "pending")) return prev;
-      return [...prev, { esp32Id, reportedAt: Date.now(), roomBed, status: "pending" }];
+  // ========== MANUAL REFRESH ==========
+  const refreshData = useCallback(async () => {
+    await fetchAllData();
+  }, [fetchAllData]);
+
+  // ========== PATIENT CRUD ==========
+  const addPatient = useCallback(async (p: Omit<Patient, "id">) => {
+    const res = await fetch(`${API_BASE}/patients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
     });
+    if (!res.ok) throw new Error("Failed to add patient");
+    const newPatient = await res.json();
+    setPatients((prev) => [...prev, mapPatientFromBackend(newPatient)]);
+    return newPatient.id;
   }, []);
 
-  const resolveMachine = useCallback((esp32Id: string) => {
-    setReportedMachines((prev) => prev.filter((m) => m.esp32Id !== esp32Id));
-  }, []);
-
-  const addPatient = useCallback((p: Omit<Patient, "id">) => {
-    const id = `p${Date.now()}`;
-    setPatients((prev) => [...prev, { ...p, id }]);
-    return id;
-  }, []);
-
-  const updatePatient = useCallback((id: string, updates: Partial<Patient>) => {
-    setPatients((prev) => prev.map((pt) => (pt.id === id ? { ...pt, ...updates } : pt)));
-  }, []);
-
-  const addBag = useCallback((b: Omit<IVBag, "id" | "startTime" | "status" | "historyLogs">) => {
-    const id = `b${Date.now()}`;
-    const now = Date.now();
-    const newBag: IVBag = {
-      ...b,
-      id,
-      startTime: now,
-      status: "running",
-      historyLogs: [{ time: now, volume: b.initialVolume, flowRate: b.flowRate }],
-    };
-    setBags((prev) => [...prev, newBag]);
-    return id;
-  }, []);
-
-  const updateBag = useCallback((id: string, updates: Partial<IVBag>) => {
-    setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, ...updates } : bag)));
-  }, []);
-
-  const deleteBag = useCallback((id: string) => {
-    setBags((prev) => prev.filter((bag) => bag.id !== id));
-  }, []);
-
-  const changeBagStatus = useCallback((id: string, status: BagStatus) => {
-    setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, status } : bag)));
-  }, []);
-
-  const completeBagManually = useCallback((id: string, stopReason: "NORMAL" | "ERROR" = "NORMAL") => {
-    setBags((prev) => prev.map((bag) => (bag.id === id ? { ...bag, status: "completed", stopReason } : bag)));
-  }, []);
-
-  const updateFromESP32 = useCallback((esp32Id: string, data: { roomBed: string; remainingVolume: number; dropsPerSecond: number }) => {
-    const now = Date.now();
-    setBags((prevBags) => {
-      let updatedBags = [...prevBags];
-      const bagIndex = updatedBags.findIndex((b) => b.esp32Id === esp32Id && b.status !== "completed");
-
-      if (bagIndex !== -1) {
-        const bag = updatedBags[bagIndex];
-        const newFlowRate = data.dropsPerSecond * 60;
-
-        let newLogs = bag.historyLogs;
-        const lastLog = newLogs.length > 0 ? newLogs[newLogs.length - 1] : null;
-        if (!lastLog || now - lastLog.time >= LOG_INTERVAL_MS) {
-          newLogs = trimHistoryLogs([...newLogs, { time: now, volume: data.remainingVolume, flowRate: newFlowRate }]);
-        }
-
-        let newStatus = bag.status;
-        let emptyTime = bag.emptyTimestamp;
-        if (data.remainingVolume <= 0 && bag.status === "running") {
-          newStatus = "empty";
-          emptyTime = now;
-        } else if (data.remainingVolume > 0 && bag.status === "empty") {
-          newStatus = "running";
-          emptyTime = undefined;
-        }
-
-        updatedBags[bagIndex] = {
-          ...bag,
-          currentVolume: data.remainingVolume,
-          flowRate: newFlowRate,
-          historyLogs: newLogs,
-          status: newStatus,
-          emptyTimestamp: emptyTime,
-        };
-
-        setPatients((prevPatients) =>
-          prevPatients.map((p) => {
-            if (p.id !== bag.patientId) return p;
-            const match = data.roomBed.match(/P(\d+)\s*-\s*G(\d+)/);
-            if (match) {
-              return { ...p, room: match[1], bed: match[2] };
-            }
-            return p;
-          })
-        );
-      }
-      return updatedBags;
+  const updatePatient = useCallback(async (id: string, updates: Partial<Patient>) => {
+    const res = await fetch(`${API_BASE}/patients/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
     });
+    if (!res.ok) throw new Error("Failed to update patient");
+    const updated = await res.json();
+    setPatients((prev) => prev.map((p) => (p.id === id ? mapPatientFromBackend(updated) : p)));
   }, []);
 
-  // ========== ESP32 DEVICE CALLBACKS ==========
-  const addEsp32 = useCallback((esp32Id: string) => {
-    setEsp32Devices((prev) => {
-      if (prev.find((d) => d.id === esp32Id)) return prev;
-      return [...prev, { id: esp32Id, registeredAt: Date.now() }];
+  const deletePatient = useCallback(async (id: string) => {
+    const res = await fetch(`${API_BASE}/patients/${id}`, {
+      method: "DELETE",
     });
+    if (!res.ok) throw new Error("Failed to delete patient");
+    setPatients((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // ========== BAG CRUD ==========
+  const addBag = useCallback(async (b: Omit<IVBag, "id" | "startTime" | "status" | "historyLogs">) => {
+    const res = await fetch(`${API_BASE}/bags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patientId: b.patientId,
+        esp32Id: b.esp32Id,
+        type: b.type,
+        initialVolume: b.initialVolume,
+        currentVolume: b.currentVolume,
+        flowRate: b.flowRate,
+      }),
+    });
+    if (!res.ok) throw new Error("Failed to add bag");
+    const newBag = await res.json();
+    const mappedBag = mapBagFromBackend(newBag);
+    mappedBag.historyLogs = [{ time: Date.now(), volume: b.initialVolume, flowRate: b.flowRate }];
+    setBags((prev) => [...prev, mappedBag]);
+    return newBag.id;
+  }, []);
+
+  const updateBag = useCallback(async (id: string, updates: Partial<IVBag>) => {
+    const res = await fetch(`${API_BASE}/bags/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error("Failed to update bag");
+    const updated = await res.json();
+    setBags((prev) => prev.map((b) => (b.id === id ? mapBagFromBackend(updated) : b)));
+  }, []);
+
+  const deleteBag = useCallback(async (id: string) => {
+    const res = await fetch(`${API_BASE}/bags/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Failed to delete bag");
+    setBags((prev) => prev.filter((b) => b.id !== id));
+  }, []);
+
+  const changeBagStatus = useCallback(async (id: string, status: BagStatus) => {
+    const res = await fetch(`${API_BASE}/bags/${id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error("Failed to change bag status");
+    setBags((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b)));
+  }, []);
+
+  const completeBagManually = useCallback(async (id: string, stopReason: "NORMAL" | "ERROR" = "NORMAL") => {
+    await changeBagStatus(id, "completed");
+  }, [changeBagStatus]);
+
+  // ========== ESP32 CRUD ==========
+  const addEsp32 = useCallback(async (esp32Id: string) => {
+    const res = await fetch(`${API_BASE}/esp32/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ esp32_id: esp32Id }),
+    });
+    if (!res.ok) throw new Error("Failed to add ESP32");
+    const newDevice = await res.json();
+    setEsp32Devices((prev) => [...prev, mapEsp32FromBackend(newDevice)]);
     return esp32Id;
   }, []);
 
-  const assignPatientToEsp32 = useCallback((esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => {
-    // Create bag if bagInfo provided
-    let bagId: string | undefined;
+  const assignPatientToEsp32 = useCallback(async (esp32Id: string, patientId: string, bagInfo?: { type: string; initialVolume: number; flowRate: number }) => {
     if (bagInfo) {
-      bagId = `b${Date.now()}`;
-      const now = Date.now();
-      const newBag: IVBag = {
-        id: bagId,
+      const bagId = await addBag({
         patientId,
         esp32Id,
         type: bagInfo.type,
         initialVolume: bagInfo.initialVolume,
         currentVolume: bagInfo.initialVolume,
         flowRate: bagInfo.flowRate,
-        startTime: now,
-        status: "running",
-        historyLogs: [{ time: now, volume: bagInfo.initialVolume, flowRate: bagInfo.flowRate }],
-      };
-      setBags((prev) => [...prev, newBag]);
+      });
+      // Refresh data immediately to update esp32Devices with new patientId/bagId
+      await fetchAllData();
+      return bagId;
     }
+    await fetchAllData();
+    return "";
+  }, [addBag, fetchAllData]);
 
-    // Update ESP32 device with patientId and bagId
-    setEsp32Devices((prev) =>
-      prev.map((d) => (d.id === esp32Id ? { ...d, patientId, bagId } : d))
-    );
-
-    return bagId || "";
-  }, []);
-
-  // Giải phóng ESP32 - xóa patientId và bagId để có thể gán bệnh nhân mới
-  const releaseEsp32 = useCallback((esp32Id: string) => {
+  const releaseEsp32 = useCallback(async (esp32Id: string) => {
     setEsp32Devices((prev) =>
       prev.map((d) => (d.id === esp32Id ? { ...d, patientId: undefined, bagId: undefined } : d))
     );
   }, []);
 
-  const moveToMaintenance = useCallback((esp32Id: string) => {
+  const moveToMaintenance = useCallback(async (esp32Id: string) => {
     setEsp32Devices((prev) =>
       prev.map((d) => (d.id === esp32Id ? { ...d, maintenance: true, patientId: undefined, bagId: undefined } : d))
     );
   }, []);
 
-  const resolveMaintenance = useCallback((esp32Id: string) => {
+  const resolveMaintenance = useCallback(async (esp32Id: string) => {
     setEsp32Devices((prev) =>
       prev.map((d) => (d.id === esp32Id ? { ...d, maintenance: false } : d))
     );
   }, []);
 
-  const removeEsp32 = useCallback((esp32Id: string) => {
+  const removeEsp32 = useCallback(async (esp32Id: string) => {
     setEsp32Devices((prev) => prev.filter((d) => d.id !== esp32Id));
+  }, []);
+
+  // ========== MACHINE REPORTS ==========
+  const reportMachine = useCallback(async (esp32Id: string, roomBed: string) => {
+    const res = await fetch(`${API_BASE}/machines/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ esp32_id: esp32Id, room_bed: roomBed }),
+    });
+    if (!res.ok) throw new Error("Failed to report machine");
+    const newMachine = await res.json();
+    setReportedMachines((prev) => [...prev, mapMachineFromBackend(newMachine)]);
+  }, []);
+
+  const resolveMachine = useCallback(async (esp32Id: string) => {
+    const res = await fetch(`${API_BASE}/machines/${esp32Id}/resolve`, {
+      method: "PUT",
+    });
+    if (!res.ok) throw new Error("Failed to resolve machine");
+    setReportedMachines((prev) => prev.filter((m) => m.esp32Id !== esp32Id));
   }, []);
 
   return (
@@ -363,23 +429,26 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
         patients,
         bags,
         esp32Devices,
+        reportedMachines,
+        isLoading,
+        isConnected,
         addPatient,
         updatePatient,
+        deletePatient,
         addBag,
         updateBag,
         deleteBag,
         changeBagStatus,
         completeBagManually,
-        updateFromESP32,
-        reportedMachines,
-        reportMachine,
-        resolveMachine,
         addEsp32,
         assignPatientToEsp32,
         releaseEsp32,
         removeEsp32,
         moveToMaintenance,
         resolveMaintenance,
+        reportMachine,
+        resolveMachine,
+        refreshData,
       }}
     >
       {children}

@@ -14,7 +14,7 @@ export function AddDeviceModal({ isOpen, onClose }: AddDeviceModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedId = esp32Id.trim().toUpperCase();
     if (!trimmedId) {
@@ -25,6 +25,23 @@ export function AddDeviceModal({ isOpen, onClose }: AddDeviceModalProps) {
       toast.error("Thiết bị này đã được thêm trước đó");
       return;
     }
+    
+    // Gọi API đăng ký ESP32 lên backend
+    try {
+      const res = await fetch("http://localhost:3001/api/esp32/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ esp32_id: trimmedId }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to register device");
+      }
+    } catch (err) {
+      toast.error("Không thể kết nối Backend. Vui lòng chạy Backend trước!");
+      return;
+    }
+    
     addEsp32(trimmedId);
     toast.success(`Đã thêm thiết bị ${trimmedId}`);
     setEsp32Id("");
