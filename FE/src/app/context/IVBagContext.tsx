@@ -162,7 +162,7 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
       const history: any[] = await res.json();
       
       const mappedHistory = history.map((h) => ({
-        time: new Date(h.time).getTime(),
+        time: new Date(h.created_at).getTime(),
         volume: parseFloat(h.volume),
         flowRate: parseFloat(h.flow_rate) || 0,
       }));
@@ -200,11 +200,12 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
   // ========== FETCH HISTORY FOR EACH BAG ==========
   useEffect(() => {
     bags.forEach((bag, index) => {
-      if (bag.historyLogs.length === 0 && bag.status !== "completed") {
+      // Fetch history cho tất cả bags (kể cả completed) để hiển thị chart
+      if (bag.historyLogs.length === 0) {
         fetchBagHistory(bag.id, index);
       }
     });
-  }, [bags, fetchBagHistory]);
+  }, [bags.length]); // Chỉ trigger khi số lượng bags thay đổi
 
   // ========== PAUSE KHI TAB ẨN ==========
   useEffect(() => {
