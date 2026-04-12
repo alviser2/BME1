@@ -84,19 +84,19 @@ export default async function handler(req, res) {
     }
 
     // PUT /api/bags/:id - Update bag (volume, flow_rate, etc)
-    if (path.match(/^\/api\/bags\/[^/]+$/) && method === 'PUT') {
+    if (path.match(/^\/api\/bags\/[^/]+$/) && method === 'PUT' && !path.endsWith('/status')) {
       const id = path.split('/')[3];
       const body = req.body || {};
       
-      // Xây dựng query động
+      // Build update query manually
       const updates = [];
-      if (body.current_volume !== undefined) updates.push(sql`current_volume = ${body.current_volume}`);
-      if (body.flow_rate !== undefined) updates.push(sql`flow_rate = ${body.flow_rate}`);
-      if (body.status !== undefined) updates.push(sql`status = ${body.status}`);
-      if (body.anomaly !== undefined) updates.push(sql`anomaly = ${body.anomaly}`);
+      if (body.current_volume !== undefined) updates.push(`current_volume = ${body.current_volume}`);
+      if (body.flow_rate !== undefined) updates.push(`flow_rate = ${body.flow_rate}`);
+      if (body.status !== undefined) updates.push(`status = '${body.status}'`);
+      if (body.anomaly !== undefined) updates.push(`anomaly = '${body.anomaly}'`);
       
       if (updates.length > 0) {
-        await sql`UPDATE iv_bags SET ${sql.join(updates, sql`, `)} WHERE id = ${id}`;
+        await sql`UPDATE iv_bags SET ${sql.unsafe(updates.join(', '))} WHERE id = ${id}`;
       }
       
       const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
@@ -127,10 +127,17 @@ export default async function handler(req, res) {
     // GET /api/bags/:id/history - Lấy lịch sử bag
     if (path.match(/^\/api\/bags\/[^/]+\/history$/) && method === 'GET') {
       const id = path.split('/')[3];
-      const logs = await sql`
-        SELECT * FROM bag_logs WHERE bag_id = ${id} ORDER BY time DESC LIMIT 100
-      `;
+      const logs = await sql`SELECT * FROM bag_logs WHERE bag_id = ${id} ORDER BY id DESC LIMIT 100`;
       return res.json(logs);
+    }
+    
+    // POST /api/bags/:id/history - Thêm log entry cho bag
+    if (path.match(/^\/api\/bags\/[^/]+\/history$/) && method === 'POST') {
+      const id = path.split('/')[3];
+      const { volume, flow_rate } = req.body;
+      await sql`INSERT INTO bag_logs (bag_id, volume, flow_rate) VALUES (${id}, ${volume}, ${flow_rate})`;
+      const logs = await sql`SELECT * FROM bag_logs WHERE bag_id = ${id} ORDER BY id DESC LIMIT 100`;
+      return res.status(201).json(logs);
     }
 
     // ========== PATIENTS ==========
