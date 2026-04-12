@@ -55,11 +55,11 @@ export default async function handler(req, res) {
     }
 
     if (path === '/api/bags' && method === 'POST') {
-      const { patientId, esp32Id, type, initialVolume, flowRate } = req.body;
+      const { patientId, esp32Id, type, initialVolume, currentVolume, flowRate } = req.body;
       const id = `b${Date.now()}`;
       await sql`
         INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, status)
-        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${initialVolume}, ${flowRate}, 'running')
+        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume}, ${flowRate}, 'running')
       `;
       const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
       return res.status(201).json(bag);
@@ -138,6 +138,19 @@ export default async function handler(req, res) {
       const id = path.split('/')[3];
       await sql`DELETE FROM patients WHERE id = ${id}`;
       return res.json({ success: true });
+    }
+
+    // GET /api/esp32/:id/bags
+    if (path.match(/^\/api\/esp32\/[^/]+\/bags$/) && method === 'GET') {
+      const esp32Id = path.split('/')[3];
+      const bags = await sql`
+        SELECT b.*, p.name as patient_name, p.room, p.bed
+        FROM iv_bags b
+        LEFT JOIN patients p ON b.patient_id = p.id
+        WHERE b.esp32_id = ${esp32Id}
+        ORDER BY b.start_time DESC
+      `;
+      return res.json(bags);
     }
 
     // ========== ESP32 ==========
