@@ -3,6 +3,8 @@ import { useIVBag } from "../context/IVBagContext";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "https://bme-1.vercel.app/api";
+
 interface AddDeviceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -28,7 +30,7 @@ export function AddDeviceModal({ isOpen, onClose }: AddDeviceModalProps) {
     
     // Gọi API đăng ký ESP32 lên backend
     try {
-      const res = await fetch("http://localhost:3001/api/esp32/register", {
+      const res = await fetch(`${API_BASE}/esp32/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ esp32_id: trimmedId }),
