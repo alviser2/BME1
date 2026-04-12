@@ -4,8 +4,8 @@ import { dropsToMlPerSec } from "../lib/utils";
 
 // ========== CONSTANTS ==========
 const DEV_API = "http://localhost:3001/api";
-const PROD_API = "https://bme1-backend.vercel.app/api";
-const API_BASE = import.meta.env.PROD ? PROD_API : DEV_API;
+const PROD_API = import.meta.env.VITE_API_BASE || "https://bme-1.vercel.app/api";
+const API_BASE = PROD_API;
 const MAX_HISTORY_ENTRIES = 1000; // Giới hạn log để tránh memory leak
 const LOG_INTERVAL_MS = 5000;     // 5 giây - tần suất ghi log
 const AUTO_COMPLETE_MS = 180000; // 3 phút - tự động complete sau khi empty
