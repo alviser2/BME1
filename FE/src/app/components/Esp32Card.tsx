@@ -10,10 +10,9 @@ interface Esp32CardProps {
   device: Esp32Device;
   bag?: IVBag;
   patient?: Patient;
-  onClick?: () => void;
 }
 
-export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
+export function Esp32Card({ device, bag, patient }: Esp32CardProps) {
   const navigate = useNavigate();
   const { completeBagManually, releaseEsp32, moveToMaintenance, reportMachine } = useIVBag();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -33,11 +32,11 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
     // Không cho tương tác với thiết bị offline
     if (device.status === "offline") return;
 
+    // Chỉ navigate khi đã có bệnh nhân
     if (hasPatient && patient) {
       navigate(`/patient/${patient.id}`);
-    } else if (onClick) {
-      onClick();
     }
+    // Card chưa gán không làm gì khi click
   };
 
   const handleEndSession = (e: React.MouseEvent) => {
@@ -103,7 +102,7 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
                 </p>
               )}
               {!hasPatient && (
-                <p className="text-xs text-gray-400 italic">Chưa gán bệnh nhân</p>
+                <p className="text-xs text-gray-400 italic">Chờ gán bình truyền</p>
               )}
             </div>
           </div>
@@ -239,8 +238,8 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
             <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
               <User size={24} className="text-gray-400" />
             </div>
-            <p className="text-sm text-gray-500 mb-3">Nhấn để gán bệnh nhân</p>
-            <p className="text-xs text-gray-400">Thiết bị đang chờ kết nối</p>
+            <p className="text-sm text-gray-500 mb-1">Thiết bị đang chờ</p>
+            <p className="text-xs text-gray-400">Thêm bình truyền để gắn thiết bị này</p>
           </div>
         )}
       </div>

@@ -3,7 +3,6 @@ import { useIVBag } from "../context/IVBagContext";
 import { Esp32Card } from "../components/Esp32Card";
 import { AddDeviceModal } from "../components/AddDeviceModal";
 import { AddBagModal } from "../components/AddBagModal";
-import { AssignPatientModal } from "../components/AssignPatientModal";
 import { Search, Plus, SlidersHorizontal, ArrowUpDown, Cpu, Droplet } from "lucide-react";
 import { calculateTimeRemainingInMinutes } from "../lib/utils";
 
@@ -13,8 +12,6 @@ export function Dashboard() {
   const { bags, patients, esp32Devices } = useIVBag();
   const [isAddDeviceModalOpen, setIsAddDeviceModalOpen] = useState(false);
   const [isAddBagModalOpen, setIsAddBagModalOpen] = useState(false);
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [selectedEsp32Id, setSelectedEsp32Id] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("timeAsc");
 
@@ -78,7 +75,6 @@ export function Dashboard() {
     return result;
   }, [esp32Devices, patients, bags, searchTerm, sortBy]);
 
-  // Stats
   const activeBags = bags.filter((b) => b.status !== "running" && b.status !== "stopped");
   const runningBags = bags.filter((b) => b.status === "running");
   const warningCount = runningBags.filter(
@@ -87,10 +83,7 @@ export function Dashboard() {
   const emptyCount = runningBags.filter((b) => b.status === "empty").length;
   const waitingCount = esp32Devices.filter((d) => !d.patientId && !d.maintenance).length;
 
-  const handleAssignClick = (esp32Id: string) => {
-    setSelectedEsp32Id(esp32Id);
-    setIsAssignModalOpen(true);
-  };
+  // Bỏ handleAssignClick — không còn assign từ card nữa
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -214,7 +207,6 @@ export function Dashboard() {
                 device={device}
                 bag={bag}
                 patient={patient}
-                onClick={() => !device.patientId && handleAssignClick(device.id)}
               />
             );
           })}
@@ -223,16 +215,6 @@ export function Dashboard() {
 
       <AddDeviceModal isOpen={isAddDeviceModalOpen} onClose={() => setIsAddDeviceModalOpen(false)} />
       <AddBagModal isOpen={isAddBagModalOpen} onClose={() => setIsAddBagModalOpen(false)} />
-      {selectedEsp32Id && (
-        <AssignPatientModal
-          isOpen={isAssignModalOpen}
-          onClose={() => {
-            setIsAssignModalOpen(false);
-            setSelectedEsp32Id(null);
-          }}
-          esp32Id={selectedEsp32Id}
-        />
-      )}
     </div>
   );
 }

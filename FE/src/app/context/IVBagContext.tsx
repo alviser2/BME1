@@ -160,7 +160,7 @@ export function IVBagProvider({ children }: { children: ReactNode }) {
       const history: any[] = await res.json();
       
       const mappedHistory = history.map((h) => ({
-        time: new Date(h.created_at).getTime(),
+        time: new Date(h.time ?? h.created_at).getTime(),
         volume: parseFloat(h.volume),
         flowRate: parseFloat(h.flow_rate) || 0,
       }));
