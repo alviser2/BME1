@@ -2,8 +2,9 @@ import React, { useState, useMemo } from "react";
 import { useIVBag } from "../context/IVBagContext";
 import { Esp32Card } from "../components/Esp32Card";
 import { AddDeviceModal } from "../components/AddDeviceModal";
+import { AddBagModal } from "../components/AddBagModal";
 import { AssignPatientModal } from "../components/AssignPatientModal";
-import { Search, Plus, SlidersHorizontal, ArrowUpDown, Cpu } from "lucide-react";
+import { Search, Plus, SlidersHorizontal, ArrowUpDown, Cpu, Droplet } from "lucide-react";
 import { calculateTimeRemainingInMinutes } from "../lib/utils";
 
 type SortOption = "timeAsc" | "timeDesc" | "volAsc" | "volDesc";
@@ -11,6 +12,7 @@ type SortOption = "timeAsc" | "timeDesc" | "volAsc" | "volDesc";
 export function Dashboard() {
   const { bags, patients, esp32Devices } = useIVBag();
   const [isAddDeviceModalOpen, setIsAddDeviceModalOpen] = useState(false);
+  const [isAddBagModalOpen, setIsAddBagModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedEsp32Id, setSelectedEsp32Id] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -106,6 +108,14 @@ export function Dashboard() {
         >
           <Plus size={20} />
           <span>Thêm thiết bị</span>
+        </button>
+
+        <button
+          onClick={() => setIsAddBagModalOpen(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-sm transition-all shadow-green-600/20 font-medium"
+        >
+          <Droplet size={20} />
+          <span>Thêm bình truyền</span>
         </button>
       </div>
 
@@ -212,6 +222,7 @@ export function Dashboard() {
       )}
 
       <AddDeviceModal isOpen={isAddDeviceModalOpen} onClose={() => setIsAddDeviceModalOpen(false)} />
+      <AddBagModal isOpen={isAddBagModalOpen} onClose={() => setIsAddBagModalOpen(false)} />
       {selectedEsp32Id && (
         <AssignPatientModal
           isOpen={isAssignModalOpen}

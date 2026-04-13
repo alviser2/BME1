@@ -41,8 +41,8 @@ export default async function handler(req, res) {
       
       // Insert bag
       await sql`
-        INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, status)
-        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume || initialVolume}, ${flowRate}, 'running')
+        INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, start_time, status)
+        VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume || initialVolume}, ${flowRate}, NOW(), 'running')
       `;
       
       // Nếu có ESP32 → set status = 'busy' và link với bag
