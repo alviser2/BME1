@@ -58,29 +58,9 @@ export function PatientDetails() {
 
     const volumeData = sortedLogs.map(log => Math.round(log.volume));
 
-    // Tính flow rate từ thay đổi volume (ml/s -> giọt/phút)
-    // 20 giọt = 1ml, vậy flowRate = (volumeLost / timeLostSeconds) * 60 / 20
-    const flowRateData: number[] = [];
-    for (let i = 0; i < sortedLogs.length; i++) {
-      if (i === 0) {
-        // Log đầu tiên: lấy flow rate ban đầu hoặc tính từ initial volume và thời gian bắt đầu
-        flowRateData.push(Math.round(sortedLogs[i].flowRate));
-      } else {
-        const prevLog = sortedLogs[i - 1];
-        const currLog = sortedLogs[i];
-        const timeDiffMs = currLog.time - prevLog.time;
-        const volumeLost = prevLog.volume - currLog.volume;
-
-        if (timeDiffMs > 0 && volumeLost >= 0) {
-          const volumeLostPerSec = volumeLost / (timeDiffMs / 1000);
-          const dropsPerSec = volumeLostPerSec * 20; // 1ml = 20 giọt
-          const dropsPerMin = dropsPerSec * 60;
-          flowRateData.push(Math.round(dropsPerMin * 10) / 10); // 1 số thập phân
-        } else {
-          flowRateData.push(flowRateData[i - 1]);
-        }
-      }
-    }
+    // Dùng thẳng flow_rate đã được BE lưu vào bag_logs tại mỗi lần ESP32 gửi data
+    // Đơn vị: giọt/phút — không tính lại từ volume delta để tránh sai số timing
+    const flowRateData = sortedLogs.map(log => Math.round(log.flowRate * 10) / 10);
 
     // Chỉ thêm điểm cuối = 0ml khi túi đã thực sự hoàn thành (để line chart đi xuống 0)
     // Không vẽ điểm 0 khi túi vẫn đang chạy
