@@ -20,39 +20,59 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
   const [bed, setBed] = useState("");
   const [selectedEsp32, setSelectedEsp32] = useState("");
   const [bagType, setBagType] = useState("Nước muối sinh lý 0.9%");
+  const [customBagType, setCustomBagType] = useState(""); // Cho loại dịch tự nhập
   const [initialVolume, setInitialVolume] = useState("500");
   const [flowRate, setFlowRate] = useState("40");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    let pId = selectedPatient;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     
-    if (selectedPatient === "new") {
-      if (!patientName || !room || !bed) {
-        toast.error("Vui lòng nhập tên, phòng và giường cho bệnh nhân mới");
-        return;
-      }
-      // await async function
-      pId = await addPatient({ name: patientName, room, bed });
-    }
-
-    // Kiểm tra ESP32 đã chọn có đang online không
-    if (selectedEsp32) {
-      const esp = availableEsp32.find(e => e.id === selectedEsp32);
-      if (!esp) {
-        toast.error("ESP32 đã chọn không còn rảnh. Vui lòng chọn ESP32 khác.");
-        return;
-      }
-    }
-
     try {
+      let pId = selectedPatient;
+      
+      if (selectedPatient === "new") {
+        if (!patientName || !room || !bed) {
+          toast.error("Vui lòng nhập tên, phòng và giường cho bệnh nhân mới");
+          setIsSubmitting(false);
+          return;
+        }
+        try {
+          pId = await addPatient({ name: patientName, room, bed });
+        } catch (err) {
+          toast.error("Lỗi khi thêm bệnh nhân: " + (err as Error).message);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Kiểm tra ESP32 đã chọn có đang online không
+      if (selectedEsp32) {
+        const esp = availableEsp32.find(e => e.id === selectedEsp32);
+        if (!esp) {
+          toast.error("ESP32 đã chọn không còn rảnh. Vui lòng chọn ESP32 khác.");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Xử lý loại dịch
+      const finalBagType = bagType === "Khác" ? customBagType : bagType;
+      if (bagType === "Khác" && !customBagType.trim()) {
+        toast.error("Vui lòng nhập tên loại dịch");
+        setIsSubmitting(false);
+        return;
+      }
+
       await addBag({
         patientId: pId,
         esp32Id: selectedEsp32 || undefined,
-        type: bagType,
+        type: finalBagType,
         initialVolume: Number(initialVolume),
         currentVolume: Number(initialVolume),
         flowRate: Number(flowRate),
@@ -69,19 +89,23 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
       setPatientName("");
       setRoom("");
       setBed("");
+      setCustomBagType("");
       setSelectedPatient("new");
+      setBagType("Nước muối sinh lý 0.9%");
       onClose();
     } catch (error) {
       toast.error("Lỗi khi thêm bình truyền: " + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative animate-in fade-in zoom-in duration-200">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 relative animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-500 hover:bg-gray-100 p-2 rounded-full transition-colors"
+          className="absolute top-4 right-4 text-gray-500 hover:bg-gray-100 p-2 rounded-full transition-colors z-10"
         >
           <X size={20} />
         </button>
@@ -140,7 +164,7 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
             </>
           )}
 
-          {/* ESP32 Selection - MỚI */}
+          {/* ESP32 Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               <span className="flex items-center gap-2">
@@ -171,6 +195,7 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
             )}
           </div>
 
+          {/* Loại dịch */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Loại Dịch</label>
             <select
@@ -184,6 +209,17 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
               <option value="Amino Acid">Amino Acid</option>
               <option value="Khác">Khác</option>
             </select>
+            
+            {/* Input tùy chỉnh khi chọn "Khác" */}
+            {bagType === "Khác" && (
+              <input
+                type="text"
+                value={customBagType}
+                onChange={(e) => setCustomBagType(e.target.value)}
+                className="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Nhập tên loại dịch..."
+              />
+            )}
           </div>
 
           <div className="flex gap-4">
@@ -219,9 +255,10 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors font-medium"
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg shadow-md transition-colors font-medium"
             >
-              Lưu & Bắt đầu
+              {isSubmitting ? "Đang xử lý..." : "Lưu & Bắt đầu"}
             </button>
           </div>
         </form>
