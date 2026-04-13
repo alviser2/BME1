@@ -87,6 +87,9 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
         flowRate: Number(flowRate),
       });
 
+      // Refresh để cập nhật context (ESP32 sẽ hiện bệnh nhân)
+      await refreshData();
+
       if (selectedEsp32) {
         toast.success(`Đã gán ESP32 ${selectedEsp32} vào bình truyền`);
       } else {
