@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useIVBag } from "../context/IVBagContext";
-import { X, Wifi } from "lucide-react";
+import { X } from "lucide-react";
 import { toast } from "sonner";
 
 interface AddBagModalProps {
@@ -9,16 +9,12 @@ interface AddBagModalProps {
 }
 
 export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
-  const { patients, esp32Devices, addPatient, addBag, refreshData } = useIVBag();
-  
-  // Lọc ESP32 đang online (rảnh)
-  const availableEsp32 = esp32Devices.filter(d => d.status === 'online');
+  const { patients, addPatient, addBag, refreshData } = useIVBag();
 
   const [selectedPatient, setSelectedPatient] = useState("new");
   const [patientName, setPatientName] = useState("");
   const [room, setRoom] = useState("");
   const [bed, setBed] = useState("");
-  const [selectedEsp32, setSelectedEsp32] = useState("");
   const [bagType, setBagType] = useState("Nước muối sinh lý 0.9%");
   const [customBagType, setCustomBagType] = useState(""); // Cho loại dịch tự nhập
   const [initialVolume, setInitialVolume] = useState("500");
@@ -80,7 +76,7 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
 
       await addBag({
         patientId: pId,
-        esp32Id: selectedEsp32 || undefined,
+        esp32Id: undefined,
         type: finalBagType,
         initialVolume: Number(initialVolume),
         currentVolume: Number(initialVolume),
@@ -90,14 +86,9 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
       // Refresh để cập nhật context (ESP32 sẽ hiện bệnh nhân)
       await refreshData();
 
-      if (selectedEsp32) {
-        toast.success(`Đã gán ESP32 ${selectedEsp32} vào bình truyền`);
-      } else {
-        toast.success("Đã thêm bình truyền thành công");
-      }
+      toast.success("Đã thêm bình truyền thành công");
 
       // Reset form
-      setSelectedEsp32("");
       setPatientName("");
       setRoom("");
       setBed("");
@@ -175,37 +166,6 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
               </div>
             </>
           )}
-
-          {/* ESP32 Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <span className="flex items-center gap-2">
-                <Wifi size={16} className="text-green-600" />
-                Thiết bị ESP32 (tuỳ chọn)
-              </span>
-            </label>
-            <select
-              value={selectedEsp32}
-              onChange={(e) => setSelectedEsp32(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="">-- Không gán ESP32 --</option>
-              {availableEsp32.length === 0 ? (
-                <option value="" disabled>Không có ESP32 rảnh</option>
-              ) : (
-                availableEsp32.map(esp => (
-                  <option key={esp.id} value={esp.id}>
-                    {esp.id} (rảnh)
-                  </option>
-                ))
-              )}
-            </select>
-            {availableEsp32.length > 0 && (
-              <p className="text-xs text-green-600 mt-1">
-                Có {availableEsp32.length} thiết bị đang rảnh
-              </p>
-            )}
-          </div>
 
           {/* Loại dịch */}
           <div>

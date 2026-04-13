@@ -10,7 +10,7 @@ interface AssignPatientModalProps {
 }
 
 export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientModalProps) {
-  const { patients, addPatient, assignPatientToEsp32 } = useIVBag();
+  const { patients, addPatient, assignPatientToEsp32, refreshData } = useIVBag();
 
   const [selectedPatient, setSelectedPatient] = useState("new");
   const [patientName, setPatientName] = useState("");
@@ -41,6 +41,8 @@ export function AssignPatientModal({ isOpen, onClose, esp32Id }: AssignPatientMo
           age: age ? parseInt(age, 10) : undefined,
           condition: condition || undefined
         });
+        // Refresh để context cập nhật trước khi assign
+        await refreshData();
       } catch (err) {
         toast.error("Không thể tạo bệnh nhân. Vui lòng thử lại!");
         return;

@@ -30,6 +30,9 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
   const isWarning = hasPatient && !isEmpty && !isCompleted && !hasAnomaly && (bag!.currentVolume <= 50 || timeRemainingMinutes <= 15);
 
   const handleCardClick = () => {
+    // Không cho tương tác với thiết bị offline
+    if (device.status === "offline") return;
+
     if (hasPatient && patient) {
       navigate(`/patient/${patient.id}`);
     } else if (onClick) {
@@ -60,8 +63,9 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
       <div
         onClick={handleCardClick}
         className={cn(
-          "bg-white rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all hover:shadow-md cursor-pointer group",
-          !hasPatient && "border-dashed border-gray-300 bg-gray-50/50",
+          "rounded-2xl shadow-sm border p-5 relative overflow-hidden transition-all group",
+          device.status === "offline" ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-60" : "bg-white hover:shadow-md cursor-pointer",
+          !hasPatient && device.status !== "offline" && "border-dashed border-gray-300 bg-gray-50/50",
           hasPatient && hasAnomaly && bag?.anomaly === "FAST_DRAIN" && "border-red-400 ring-2 ring-red-200",
           hasPatient && !hasAnomaly && isWarning && !isEmpty && "border-orange-300 ring-1 ring-orange-300",
           hasPatient && !hasAnomaly && isEmpty && "border-red-300 ring-1 ring-red-300",
