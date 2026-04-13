@@ -96,6 +96,78 @@ vercel --prod
 - `GET /api/machines/reported` - Máy báo lỗi
 - `POST /api/esp32/update` - ESP32 webhook
 
+## ESP32 Workflow (Luân phiên giữa các giường)
+
+### Mô tả luồng hoạt động
+
+```
+Điều dưỡng lấy ESP32 (rảnh) → Bật nguồn → Gắn vào chai truyền → Gán vào Bag → Theo dõi
+     ↓
+Kết thúc truyền → ESP32 tự động rảnh → Lấy ESP32 khác gắn giường mới
+```
+
+### Chi tiết 4 bước
+
+#### Bước 1: ESP32 bật lên → Đăng ký online
+```
+POST /api/esp32/register
+Body: { "esp32_id": "ABC123" }
+
+Response: { id: "ABC123", status: "online", ... }
+```
+→ ESP32 status = `online` (rảnh, sẵn sàng gán)
+
+#### Bước 2: Điều dưỡng bắt đầu truyền → Gán ESP32 vào Bag
+```
+POST /api/bags
+Body: {
+  "patientId": "p1",
+  "esp32Id": "ABC123",   ← chọn ESP32 online
+  "type": "Nước muối sinh lý 0.9%",
+  "initialVolume": 500,
+  "flowRate": 40
+}
+
+Response: { id: "b123", esp32_id: "ABC123", status: "running", ... }
+```
+→ ESP32 status = `busy` (đang theo dõi bag)
+
+#### Bước 3: ESP32 gửi data mỗi 5 giây
+```
+POST /api/esp32/update
+Body: { "esp32_id": "ABC123", "volume": 350, "flow_rate": 40 }
+
+Response: { success: true, bag: {...}, anomaly: null }
+```
+
+#### Bước 4: Kết thúc truyền → Giải phóng ESP32
+```
+PUT /api/bags/b123/status
+Body: { "status": "completed" }
+
+Response: { id: "b123", status: "completed", ... }
+```
+→ ESP32 status = `online` (rảnh, có thể gán giường khác)
+
+### API ESP32
+
+| Endpoint | Mô tả |
+|----------|-------|
+| `GET /api/esp32` | Tất cả thiết bị |
+| `GET /api/esp32/available` | ESP32 đang rảnh (online) |
+| `POST /api/esp32/register` | Đăng ký ESP32 online |
+| `POST /api/esp32/update` | ESP32 gửi data (phải đang busy) |
+
+### Trạng thái ESP32
+
+| Status | Ý nghĩa |
+|--------|---------|
+| `offline` | Chưa đăng ký / mất kết nối |
+| `online` | Rảnh, sẵn sàng gán vào bag |
+| `busy` | Đang theo dõi 1 túi truyền |
+
+---
+
 ## Troubleshooting
 
 ### Lỗi CORS
@@ -111,6 +183,11 @@ res.setHeader('Access-Control-Allow-Origin', '*');
 
 ### Lỗi API 404
 Kiểm tra `vercel.json` routes config trong BE
+
+### ESP32 không gửi được data
+1. Kiểm tra ESP32 đã gọi `POST /api/esp32/register` chưa
+2. Kiểm tra ESP32 đã được gán vào bag chưa (status phải = `busy`)
+3. Xem logs: `vercel logs bme1-backend`
 
 ## Commands Vercel
 

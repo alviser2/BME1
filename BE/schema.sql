@@ -7,6 +7,7 @@
 DROP TABLE IF EXISTS bag_logs CASCADE;
 DROP TABLE IF EXISTS iv_bags CASCADE;
 DROP TABLE IF EXISTS patients CASCADE;
+DROP TABLE IF EXISTS esp32_devices CASCADE;
 DROP TABLE IF EXISTS reported_machines CASCADE;
 
 -- ==========================================
@@ -58,7 +59,20 @@ CREATE INDEX idx_bag_logs_bag_id ON bag_logs(bag_id);
 CREATE INDEX idx_bag_logs_bag_time ON bag_logs(bag_id, time DESC);
 
 -- ==========================================
--- 4. Bảng Máy báo lỗi
+-- 4. Bảng ESP32 Devices
+-- ==========================================
+CREATE TABLE esp32_devices (
+    id              VARCHAR(50) PRIMARY KEY,
+    status          VARCHAR(20) DEFAULT 'offline',  -- offline | online | busy
+    current_bag_id  VARCHAR(50),                     -- bag đang theo dõi (nếu busy)
+    registered_at   TIMESTAMP DEFAULT NOW(),
+    last_seen_at    TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_esp32_devices_status ON esp32_devices(status);
+
+-- ==========================================
+-- 5. Bảng Máy báo lỗi
 -- ==========================================
 CREATE TABLE reported_machines (
     id          BIGSERIAL PRIMARY KEY,

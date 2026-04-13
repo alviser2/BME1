@@ -38,10 +38,32 @@ export default async function handler(req, res) {
     if (path === '/api/bags' && method === 'POST') {
       const { patientId, esp32Id, type, initialVolume, currentVolume, flowRate } = req.body;
       const id = `b${Date.now()}`;
+      
+      // Insert bag
       await sql`
         INSERT INTO iv_bags (id, patient_id, esp32_id, type, initial_volume, current_volume, flow_rate, status)
         VALUES (${id}, ${patientId}, ${esp32Id || null}, ${type}, ${initialVolume}, ${currentVolume || initialVolume}, ${flowRate}, 'running')
       `;
+      
+      // Nếu có ESP32 → set status = 'busy' và link với bag
+      if (esp32Id) {
+        await sql`
+          UPDATE esp32_devices 
+          SET status = 'busy', current_bag_id = ${id}, last_seen_at = NOW()
+          WHERE id = ${esp32Id}
+        `;
+        
+        // Kiểm tra ESP32 có tồn tại không
+        const [device] = await sql`SELECT * FROM esp32_devices WHERE id = ${esp32Id}`;
+        if (!device) {
+          // Tạo mới nếu chưa có
+          await sql`
+            INSERT INTO esp32_devices (id, status, current_bag_id, registered_at, last_seen_at)
+            VALUES (${esp32Id}, 'busy', ${id}, NOW(), NOW())
+          `;
+        }
+      }
+      
       const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
       // Log initial
       await sql`INSERT INTO bag_logs (bag_id, volume, flow_rate) VALUES (${id}, ${initialVolume}, ${flowRate})`;
@@ -103,7 +125,7 @@ export default async function handler(req, res) {
       return res.json(bag);
     }
 
-    // PUT /api/bags/:id/status - Thay đổi status bag (running, completed, etc)
+    // PUT /api/bags/:id/status - Thay đổi status bag (running, completed, cancelled)
     if (path.match(/^\/api\/bags\/[^/]+\/status$/) && method === 'PUT') {
       const id = path.split('/')[3];
       const { status } = req.body;
@@ -112,15 +134,40 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'status is required' });
       }
       
+      // Update bag status
       await sql`UPDATE iv_bags SET status = ${status}, updated_at = NOW() WHERE id = ${id}`;
       const [bag] = await sql`SELECT * FROM iv_bags WHERE id = ${id}`;
+      
+      // Nếu bag completed/cancelled → giải phóng ESP32
+      if ((status === 'completed' || status === 'cancelled') && bag?.esp32_id) {
+        await sql`
+          UPDATE esp32_devices 
+          SET status = 'online', current_bag_id = NULL, last_seen_at = NOW()
+          WHERE id = ${bag.esp32_id}
+        `;
+      }
+      
       return res.json(bag);
     }
 
     // DELETE /api/bags/:id - Xóa bag
     if (path.match(/^\/api\/bags\/[^/]+$/) && method === 'DELETE') {
       const id = path.split('/')[3];
+      
+      // Lấy esp32_id trước khi xóa
+      const [bag] = await sql`SELECT esp32_id FROM iv_bags WHERE id = ${id}`;
+      
       await sql`DELETE FROM iv_bags WHERE id = ${id}`;
+      
+      // Giải phóng ESP32 nếu có
+      if (bag?.esp32_id) {
+        await sql`
+          UPDATE esp32_devices 
+          SET status = 'online', current_bag_id = NULL, last_seen_at = NOW()
+          WHERE id = ${bag.esp32_id}
+        `;
+      }
+      
       return res.json({ success: true });
     }
 
@@ -200,18 +247,48 @@ export default async function handler(req, res) {
       return res.json(devices);
     }
 
-    // POST /api/esp32/register - Đăng ký thiết bị mới
+    // GET /api/esp32/available - Lấy ESP32 đang rảnh (online)
+    if (path === '/api/esp32/available' && method === 'GET') {
+      const devices = await sql`
+        SELECT * FROM esp32_devices 
+        WHERE status = 'online' 
+        ORDER BY last_seen_at DESC
+      `;
+      return res.json(devices);
+    }
+
+    // POST /api/esp32/register - Đăng ký thiết bị online
+    // Cách dùng: ESP32 bật lên → gọi API này → status = 'online'
     if (path === '/api/esp32/register' && method === 'POST') {
       const id = req.body.esp32_id || req.body.id;
       if (!id) return res.status(400).json({ error: 'esp32_id required' });
       
+      // Kiểm tra ESP32 có đang bận bag khác không
+      const [existing] = await sql`SELECT * FROM esp32_devices WHERE id = ${id}`;
+      
+      if (existing && existing.status === 'busy') {
+        return res.status(409).json({ 
+          error: 'ESP32 đang bận theo dõi bag khác', 
+          current_bag_id: existing.current_bag_id,
+          status: 'busy'
+        });
+      }
+      
+      // Đăng ký online
       await sql`
         INSERT INTO esp32_devices (id, registered_at, last_seen_at, status)
         VALUES (${id}, NOW(), NOW(), 'online')
-        ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW(), status = 'online'
+        ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW(), status = 'online', current_bag_id = NULL
       `;
       const [device] = await sql`SELECT * FROM esp32_devices WHERE id = ${id}`;
       return res.status(201).json(device);
+    }
+
+    // DELETE /api/esp32/:id - Xóa thiết bị
+    if (path.match(/^\/api\/esp32\/[^/]+$/) && method === 'DELETE') {
+      const id = path.split('/')[3];
+      await sql`DELETE FROM esp32_devices WHERE id = ${id}`;
+      return res.json({ success: true });
     }
 
     // GET /api/esp32/:id/bags - Lấy bags của 1 thiết bị
@@ -228,6 +305,7 @@ export default async function handler(req, res) {
     }
 
     // POST /api/esp32/update - ESP32 gửi data cập nhật
+    // ESP32 phải đang 'busy' mới được gửi data
     if (path === '/api/esp32/update' && method === 'POST') {
       const { esp32_id, volume, flow_rate } = req.body;
       
@@ -235,14 +313,27 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'esp32_id required' });
       }
       
-      // Auto register ESP32
-      await sql`
-        INSERT INTO esp32_devices (id, status)
-        VALUES (${esp32_id}, 'online')
-        ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW(), status = 'online'
-      `;
+      // Kiểm tra ESP32 có tồn tại và đang busy không
+      const [device] = await sql`SELECT * FROM esp32_devices WHERE id = ${esp32_id}`;
+      
+      if (!device) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'ESP32 chưa đăng ký. Vui lòng gọi POST /api/esp32/register trước' 
+        });
+      }
+      
+      if (device.status !== 'busy') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'ESP32 chưa được gán vào bag. Vui lòng bắt đầu truyền trước' 
+        });
+      }
 
-      // Find active bag
+      // Cập nhật last_seen_at
+      await sql`UPDATE esp32_devices SET last_seen_at = NOW() WHERE id = ${esp32_id}`;
+
+      // Find active bag của ESP32 này
       const bags = await sql`
         SELECT * FROM iv_bags WHERE esp32_id = ${esp32_id} AND status IN ('running', 'empty') LIMIT 1
       `;
