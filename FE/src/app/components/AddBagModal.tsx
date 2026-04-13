@@ -9,7 +9,7 @@ interface AddBagModalProps {
 }
 
 export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
-  const { patients, esp32Devices, addPatient, addBag } = useIVBag();
+  const { patients, esp32Devices, addPatient, addBag, refreshData } = useIVBag();
   
   // Lọc ESP32 đang online (rảnh)
   const availableEsp32 = esp32Devices.filter(d => d.status === 'online');
@@ -44,6 +44,8 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
         }
         try {
           pId = await addPatient({ name: patientName, room, bed });
+          // Force refresh để context cập nhật state trước khi addBag
+          await refreshData();
         } catch (err) {
           toast.error("Lỗi khi thêm bệnh nhân: " + (err as Error).message);
           setIsSubmitting(false);
@@ -59,6 +61,13 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
           setIsSubmitting(false);
           return;
         }
+      }
+
+      // Validate: cần có bệnh nhân được chọn
+      if (!pId) {
+        toast.error("Vui lòng chọn bệnh nhân");
+        setIsSubmitting(false);
+        return;
       }
 
       // Xử lý loại dịch

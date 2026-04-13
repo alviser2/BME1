@@ -118,24 +118,22 @@ export function Esp32Card({ device, bag, patient, onClick }: Esp32CardProps) {
               </button>
             )}
 
+            {/* ESP32 Status Badge - dựa trên trạng thái thực của device */}
             <span className={cn(
               "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full",
-              !hasPatient && "bg-gray-100 text-gray-500",
-              hasPatient && isRunning && "bg-green-50 text-green-600",
-              hasPatient && isEmpty && "bg-red-50 text-red-600",
-              hasPatient && !isRunning && !isEmpty && "bg-yellow-50 text-yellow-600"
+              device.status === "online" && "bg-green-50 text-green-600",
+              device.status === "busy" && "bg-blue-50 text-blue-600",
+              device.status === "offline" && "bg-gray-100 text-gray-500"
             )}>
               <span className={cn(
                 "w-2 h-2 rounded-full",
-                !hasPatient && "bg-gray-400",
-                hasPatient && isRunning && "bg-green-500",
-                hasPatient && isEmpty && "bg-red-500",
-                hasPatient && !isRunning && !isEmpty && "bg-yellow-500"
+                device.status === "online" && "bg-green-500",
+                device.status === "busy" && "bg-blue-500",
+                device.status === "offline" && "bg-gray-400"
               )} />
-              {!hasPatient && "Chờ gán"}
-              {hasPatient && isRunning && "Đang truyền"}
-              {hasPatient && isEmpty && "Đã hết dịch"}
-              {hasPatient && !isRunning && !isEmpty && "Tạm dừng"}
+              {device.status === "online" && "Online"}
+              {device.status === "busy" && "Busy"}
+              {device.status === "offline" && "Offline"}
             </span>
           </div>
         </div>
