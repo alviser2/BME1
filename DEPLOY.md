@@ -189,6 +189,13 @@ Kiểm tra `vercel.json` routes config trong BE
 2. Kiểm tra ESP32 đã được gán vào bag chưa (status phải = `busy`)
 3. Xem logs: `vercel logs bme1-backend`
 
+## 📡 ESP32 Integration
+
+Xem chi tiết trong file [ESP32-GUIDE.md](./ESP32-GUIDE.md):
+- API Endpoints cho ESP32
+- Arduino Code mẫu
+- Test thủ công bằng curl
+
 ## Commands Vercel
 
 ```bash

@@ -25,21 +25,18 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate
-    if (!selectedPatient && patientName) {
-      // Đang chọn tạo patient mới
-    }
-    
     let pId = selectedPatient;
+    
     if (selectedPatient === "new") {
       if (!patientName || !room || !bed) {
         toast.error("Vui lòng nhập tên, phòng và giường cho bệnh nhân mới");
         return;
       }
-      pId = addPatient({ name: patientName, room, bed });
+      // await async function
+      pId = await addPatient({ name: patientName, room, bed });
     }
 
     // Kiểm tra ESP32 đã chọn có đang online không
@@ -51,22 +48,32 @@ export function AddBagModal({ isOpen, onClose }: AddBagModalProps) {
       }
     }
 
-    addBag({
-      patientId: pId,
-      esp32Id: selectedEsp32 || undefined,
-      type: bagType,
-      initialVolume: Number(initialVolume),
-      currentVolume: Number(initialVolume),
-      flowRate: Number(flowRate),
-    });
+    try {
+      await addBag({
+        patientId: pId,
+        esp32Id: selectedEsp32 || undefined,
+        type: bagType,
+        initialVolume: Number(initialVolume),
+        currentVolume: Number(initialVolume),
+        flowRate: Number(flowRate),
+      });
 
-    if (selectedEsp32) {
-      toast.success(`Đã gán ESP32 ${selectedEsp32} vào bình truyền`);
+      if (selectedEsp32) {
+        toast.success(`Đã gán ESP32 ${selectedEsp32} vào bình truyền`);
+      } else {
+        toast.success("Đã thêm bình truyền thành công");
+      }
+
+      // Reset form
+      setSelectedEsp32("");
+      setPatientName("");
+      setRoom("");
+      setBed("");
+      setSelectedPatient("new");
+      onClose();
+    } catch (error) {
+      toast.error("Lỗi khi thêm bình truyền: " + (error as Error).message);
     }
-
-    // Reset form
-    setSelectedEsp32("");
-    onClose();
   };
 
   return (
